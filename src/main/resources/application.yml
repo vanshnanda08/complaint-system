@@ -1,0 +1,38 @@
+spring:
+  application.name: civictrack
+
+  # We authenticate via JwtAuthFilter, not a UserDetailsService, so suppress
+  # Boot's default in-memory user (and the random password it logs at startup).
+  autoconfigure.exclude:
+    - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+
+  # WEEK 1 ONLY. File-backed H2 so registrations survive a restart.
+  # Week 2 swaps this block for Postgres + PostGIS and Flyway takes over the
+  # schema, at which point ddl-auto becomes 'validate' (blueprint §8).
+  datasource:
+    url: jdbc:h2:file:./data/civictrack;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    open-in-view: false
+    hibernate.ddl-auto: update
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  h2.console:
+    enabled: true
+    path: /h2-console
+
+server:
+  port: 8080
+  error.include-message: always
+
+civictrack:
+  jwt:
+    # Dev default. In deployment this comes from the JWT_SECRET env var.
+    secret: ${JWT_SECRET:civictrack-dev-secret-change-me-in-production-0123456789}
+    access-ttl-minutes: 15
+    refresh-ttl-days: 30
+
+logging.level:
+  com.civictrack: DEBUG
