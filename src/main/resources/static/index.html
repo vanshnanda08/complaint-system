@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · CivicTrack</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<main class="shell">
+  <div class="card">
+    <header class="card-head">
+      <div class="brand"><span class="brand-mark">◎</span> CivicTrack</div>
+      <p class="tagline">Municipal issue reporting and accountability</p>
+    </header>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tab-login" role="tab" aria-selected="true"
+              aria-controls="form-login">Sign in</button>
+      <button class="tab" id="tab-register" role="tab" aria-selected="false"
+              aria-controls="form-register">Create account</button>
+    </div>
+
+    <!-- ---------- sign in ---------- -->
+    <form id="form-login" role="tabpanel" aria-labelledby="tab-login" novalidate>
+      <div class="alert" id="login-error" hidden></div>
+
+      <div class="field">
+        <label for="login-identifier">Email or phone number</label>
+        <input id="login-identifier" name="identifier" type="text"
+               autocomplete="username" required>
+      </div>
+
+      <div class="field">
+        <label for="login-password">Password</label>
+        <input id="login-password" name="password" type="password"
+               autocomplete="current-password" required>
+      </div>
+
+      <button class="btn" type="submit">Sign in</button>
+    </form>
+
+    <!-- ---------- register ---------- -->
+    <form id="form-register" role="tabpanel" aria-labelledby="tab-register" novalidate hidden>
+      <div class="alert" id="register-error" hidden></div>
+
+      <div class="field">
+        <label for="reg-name">Full name</label>
+        <input id="reg-name" name="fullName" type="text" autocomplete="name" required>
+      </div>
+
+      <div class="field">
+        <label for="reg-email">Email address</label>
+        <input id="reg-email" name="email" type="email" autocomplete="email">
+      </div>
+
+      <div class="field">
+        <label for="reg-phone">Phone number <span class="optional">(optional)</span></label>
+        <input id="reg-phone" name="phone" type="tel" autocomplete="tel">
+        <p class="hint">Give an email address or a phone number — either one works.</p>
+      </div>
+
+      <div class="field">
+        <label for="reg-password">Password</label>
+        <input id="reg-password" name="password" type="password"
+               autocomplete="new-password" required>
+        <p class="hint">At least 8 characters.</p>
+      </div>
+
+      <button class="btn" type="submit">Create account</button>
+    </form>
+
+    <p class="demo-note">
+      <strong>Demo accounts</strong> — password <code>password123</code><br>
+      <code>citizen@civictrack.in</code> ·
+      <code>staff@civictrack.in</code> ·
+      <code>supervisor@civictrack.in</code> ·
+      <code>admin@civictrack.in</code><br>
+      <button type="button" id="fill-demo">Fill in the citizen account</button>
+    </p>
+  </div>
+</main>
+
+<script>
+const api = "/api/v1/auth";
+
+/* ---------- tab switching ---------- */
+const tabs = {
+  "tab-login": "form-login",
+  "tab-register": "form-register",
+};
+
+Object.keys(tabs).forEach(tabId => {
+  document.getElementById(tabId).addEventListener("click", () => {
+    Object.entries(tabs).forEach(([t, f]) => {
+      const selected = t === tabId;
+      document.getElementById(t).setAttribute("aria-selected", String(selected));
+      document.getElementById(f).hidden = !selected;
+    });
+    hideErrors();
+  });
+});
+
+function hideErrors() {
+  document.getElementById("login-error").hidden = true;
+  document.getElementById("register-error").hidden = true;
+}
+
+function showError(id, message) {
+  const box = document.getElementById(id);
+  box.textContent = message;
+  box.hidden = false;
+}
+
+/* ---------- shared submit ---------- */
+async function submitAuth(path, payload, errorBoxId, button) {
+  hideErrors();
+  button.disabled = true;
+  const originalLabel = button.textContent;
+  button.textContent = "Please wait…";
+
+  try {
+    const response = await fetch(api + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      // The backend answers with RFC 7807 problem+json, so the message is in `detail`.
+      showError(errorBoxId, body.detail || "Something went wrong. Please try again.");
+      return;
+    }
+
+    localStorage.setItem("ct_access_token", body.accessToken);
+    localStorage.setItem("ct_refresh_token", body.refreshToken);
+    window.location.href = "/app.html";
+
+  } catch (e) {
+    showError(errorBoxId, "Cannot reach the server. Is the backend running?");
+  } finally {
+    button.disabled = false;
+    button.textContent = originalLabel;
+  }
+}
+
+/* ---------- login ---------- */
+document.getElementById("form-login").addEventListener("submit", event => {
+  event.preventDefault();
+  const identifier = document.getElementById("login-identifier").value.trim();
+  const password = document.getElementById("login-password").value;
+
+  if (!identifier || !password) {
+    showError("login-error", "Enter your email or phone number and your password.");
+    return;
+  }
+  submitAuth("/login", { identifier, password },
+             "login-error", event.submitter || event.target.querySelector(".btn"));
+});
+
+/* ---------- register ---------- */
+document.getElementById("form-register").addEventListener("submit", event => {
+  event.preventDefault();
+  const fullName = document.getElementById("reg-name").value.trim();
+  const email = document.getElementById("reg-email").value.trim();
+  const phone = document.getElementById("reg-phone").value.trim();
+  const password = document.getElementById("reg-password").value;
+
+  if (!fullName) {
+    showError("register-error", "Please enter your full name.");
+    return;
+  }
+  if (!email && !phone) {
+    showError("register-error", "Give an email address or a phone number.");
+    return;
+  }
+  if (password.length < 8) {
+    showError("register-error", "Password must be at least 8 characters.");
+    return;
+  }
+  submitAuth("/register", { fullName, email, phone, password },
+             "register-error", event.submitter || event.target.querySelector(".btn"));
+});
+
+/* ---------- demo convenience ---------- */
+document.getElementById("fill-demo").addEventListener("click", () => {
+  document.getElementById("login-identifier").value = "citizen@civictrack.in";
+  document.getElementById("login-password").value = "password123";
+});
+</script>
+</body>
+</html>
