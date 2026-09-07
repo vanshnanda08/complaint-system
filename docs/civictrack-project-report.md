@@ -536,6 +536,25 @@ The third clause was added during implementation. Revision 2 stated the rule wit
 
 **Consequence requiring care.** Both providers front PostgreSQL with a connection pooler in transaction mode. Hibernate's server-side prepared statements are incompatible with transaction pooling, and this system's correctness rests on `pg_advisory_xact_lock` and `FOR UPDATE` row locks. The application therefore connects to the direct endpoint on port 5432, never the pooled endpoint. Hikari is already the connection pool. Misconfiguring this produces intermittent failures indistinguishable from clustering bugs.
 
+
+### 12.8 The escalation re-arm formula could not be implemented as written
+
+**Defect.** Escalation was specified to re-arm the deadline to `now + remaining_sla / 2`, floored at two hours. Escalation happens on breach, and at breach the remaining SLA is by definition zero or negative, so the halved term is never positive, the floor always wins, and the rule collapses to a flat two hours at every rung. The compounding pressure the sentence described is not something the formula can produce.
+
+**Fix.** Halve the issue's full allowance once per rung — `max(floor, allowance / 2^level)` — which for a 72-hour ticket gives 36, 18, 9 and 4.5 hours. Same intent, expressed over a quantity that is positive when the calculation runs.
+
+**A second defect, found by a test rather than by review.** The scheduled priority recompute (§12.4) tightens `due_at` towards `first_reported_at + allowance`, and for an already-breached issue that expression lies in the past. It was therefore pulling each freshly re-armed deadline back behind the current time — and since escalation raises the score, and often the band with it, the recompute was undoing the re-arm it had itself caused. The sweep then re-escalated the same issue on every pass, climbing all four rungs in minutes. Resolved by treating a deadline granted by an escalation as authoritative: escalated issues are still re-scored and re-banded, but their clock is governed by the ladder.
+
+**Alternative rejected.** Flooring the recomputed deadline at the last escalation plus the re-arm floor. It also breaks the loop, but it collapses every escalated issue to the floor immediately, which makes the halving meaningless in the cases it was written for.
+
+### 12.9 One authorisation guard could not answer two different questions
+
+**Defect.** The specification sketched a single guard, `canAct(issueId, auth)`, checking department scope and — for staff — that the caller is the assignee. A newly created issue has no assignee, so under that guard no staff member can acknowledge anything: the first transition in the lifecycle is unreachable.
+
+**Fix.** Separate the two questions, which fall on the same line as the two mechanisms. Role checks (`@PreAuthorize`) answer what kind of user may do what kind of thing; the scope guard answers whether an issue is in the caller's department or ward; and assignment is a per-transition rule, so it lives in the transition table as a named guard applying to starting and finishing work and to nothing else.
+
+**Consequence worth stating.** The scope guard admits a supervisor who has a ward and no department — a ward officer — on any issue in that ward. Without that clause, level 3 of the escalation ladder would hand issues to somebody unable to act on them.
+
 ---
 
 ## 13. Functional Requirements
@@ -636,6 +655,11 @@ The third clause was added during implementation. Revision 2 stated the rule wit
 ## 17. Timeline
 
 Eight weeks, with a milestone review at the end of week 4.
+
+> **This is a calendar, not a build order.** The phase numbering used in the
+> repository and in the design decision log is in
+> `docs/civictrack-claude-code-prompts.md`; week numbers here and phase numbers
+> there are different axes and are not meant to line up. See DD-022.
 
 | Week | Focus | Deliverable |
 |---|---|---|

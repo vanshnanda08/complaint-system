@@ -10,7 +10,9 @@ because a design that has been reviewed and corrected is a stronger claim than
 one that has not.
 
 Entries DD-001 through DD-006 are the six defects found in the pre-implementation
-review of the specification in `docs/`. They are referenced by ID in migration
+review of the specification in `docs/`. DD-016 and DD-020 are two further
+specification defects found during phase 3, one of them by a test rather than by
+reading. They are referenced by ID in migration
 comments and in code, so that anyone reading `V1__baseline.sql` and wondering
 why `max_member_dist_m` exists has one place to look.
 
@@ -34,7 +36,14 @@ why `max_member_dist_m` exists has one place to look.
 | DD-012 | Class Data Sharing in the runtime image | Adopted |
 | DD-013 | Reference data ships as a Flyway migration, not an admin UI | Adopted |
 | DD-014 | Testcontainers finds Colima's socket via an auto-activating Maven profile | Adopted |
-| DD-015 | Actuator exposes more endpoints than the security chain permits | **Open — decide in phase 5** |
+| DD-015 | Actuator exposes more endpoints than the security chain permits | Resolved in phase 3 — ADMIN required |
+| DD-016 | Escalation re-arms from the full allowance, not from remaining time | Adopted |
+| DD-017 | Reporting stays open to anonymous submission | Adopted |
+| DD-018 | A distinct reporter is an account where one exists, else a device | Adopted |
+| DD-019 | Auth scope: token type separation in, rotation and password reset out | Adopted |
+| DD-020 | Role, scope and transition are three authorisation layers, not one | Adopted |
+| DD-021 | Priority ageing excludes paused time | Adopted |
+| DD-022 | One authoritative phase numbering | Adopted |
 
 ---
 
@@ -546,80 +555,317 @@ to be redone whenever the runtime changes.
 
 ---
 
-## DD-015 — Actuator exposure and the security whitelist disagree
+## DD-015 — Actuator exposure and the security whitelist disagreed
 
-**Status: open.** Recorded now, decided in **phase 3 of the build order**, when
-authentication lands.
+**Status: resolved in phase 3.** `/actuator/metrics` and `/actuator/prometheus`
+now require `ADMIN`.
 
-> **On the phase number, because multiple schemes are in play and they disagree.**
-> The build order in `civictrack-java-blueprint.md` §14 (mirrored in the README)
-> has eleven phases, and auth is phase 5. The delivery timeline in
-> `civictrack-project-report.md` §17 has eight weeks, and auth is week 3.
-> However, `docs/civictrack-claude-code-prompts.md` is the **authoritative
-> prompt and build order document for this project**, and it explicitly lands
-> auth in **Phase 3**. Therefore, we defer this decision to Phase 3, where
-> the authentication mechanism is actually built.
+**The defect.** `application.yml` exposed four actuator endpoints
+(`health,info,metrics,prometheus`) while `SecurityConfig` permitted two
+(`health`, `health/**`, `info`). Metrics and Prometheus were therefore
+*exposed but unreachable*: registered, served by the actuator infrastructure,
+and rejected by the security chain for every caller. Before phase 3 there was
+no authentication either, so they were unreachable by anyone, through any
+means.
 
-**The current state.** `application.yml` exposes four actuator endpoints:
+**Why it was recorded rather than fixed at the time.** Widening the whitelist
+in phase 2 would have resolved a security question by making the configuration
+self-consistent rather than by deciding what access those endpoints should
+have. Those are easy to confuse and only one of them is a decision. There was
+also nothing to express an access policy *in terms of*: no roles existed.
 
-```yaml
-management.endpoints.web.exposure.include: health,info,metrics,prometheus
+**The fix.** `.requestMatchers("/actuator/metrics", "/actuator/metrics/**",
+"/actuator/prometheus").hasRole("ADMIN")`. Of the four options enumerated when
+this was opened, this is the second: the most conservative and the conventional
+one.
+
+The argument against the cheapest option — permitting them anonymously on the
+grounds that this is a platform whose pitch is "everything here is public" — is
+that the pitch is about *the city's data*, not about the server's internals.
+`/actuator/prometheus` publishes latency distributions per endpoint, JVM and
+connection-pool internals, and the ingest timer, from which report volume and
+its timing can be inferred. None of that is the public accountability record;
+all of it is useful to somebody probing the service.
+
+`prometheus` stays in the exposure list even though nothing scrapes it yet,
+because it is now behind an authorisation rule rather than behind an accident.
+
+**What must not be inferred from this entry.** That the ingest timer was ever
+not recording. It was, and `IngestMetricsIT` proves it by asserting on the
+`MeterRegistry` directly rather than through HTTP — written that way precisely
+so that this access-control question could not silently break the observability
+guarantee the week-7 evaluation depends on.
+
+**Tested by** `AuthApiIT.metricsAreReachableByAnAdministrator`: anonymous 401,
+citizen 403, administrator 200.
+
+---
+
+## DD-016 — The escalation re-arm formula could not be implemented literally
+
+**The defect.** The specification says an escalation re-arms the deadline to
+`now + remaining_sla / 2`, floored at two hours. But escalation happens *on
+breach*, and at breach the remaining SLA is by definition zero or negative. So
+`remaining / 2` is never positive, the floor always wins, and the rule
+degenerates to a flat two hours at every rung. The "escalation pressure
+compounds" claim the sentence was making is not something the formula can
+produce.
+
+**Why it matters.** A ladder where every rung grants the same two hours is not
+a ladder, it is a repeated alarm. The compounding is the part that makes
+escalation mean something: each rung has to give less room than the last.
+
+**The fix.** Halve the issue's *full* allowance once per rung, floored at
+`civictrack.sla.rearm-floor`:
+
+```
+granted = max(rearm_floor, sla_allowance(category, priority) / 2^level)
+due_at  = now + granted
 ```
 
-`SecurityConfig` permits two of them anonymously:
+For a 72-hour pothole at MEDIUM that is 36 h, 18 h, 9 h, then 4.5 h. Same
+intent, expressed in terms of a quantity that is actually positive when the
+calculation runs.
 
-```java
-.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+**A second defect, found by the test rather than by reading.** The priority
+recompute (DD-004) and the escalation re-arm were fighting each other. The
+recompute tightens `due_at` towards `first_reported_at + allowance`, and for an
+issue that has already breached that expression is *in the past* — so the
+recompute pulled the freshly re-armed deadline back behind now, and since
+escalation adds 20 points to the score and often a band with it, the recompute
+was undoing the re-arm that it had itself caused. The sweep then escalated the
+same issue again on its next pass, climbing all four rungs in minutes.
+
+The resolution: once an issue has escalated, its deadline is a grant tied to
+that escalation, and the recompute leaves it alone. Escalated issues still get
+their score and band rewritten — that is what DD-004 is actually about, queue
+order — but their clock is governed by the ladder, which halves it per rung
+anyway, a stronger tightening than the band multiplier would have applied.
+
+**The alternative rejected.** Flooring the recomputed deadline at
+`last_escalated_at + rearm_floor`, which also breaks the loop. Rejected because
+it collapses every escalated issue's deadline to the floor immediately, which
+makes the halving meaningless in exactly the cases it was written for.
+
+**Tested by** `EscalationIdempotencyIT.escalationRearmsTheDeadlineRatherThanLeavingItInThePast`,
+which is the test that found the interaction: the deadline was landing two days
+in the past.
+
+---
+
+## DD-017 — Reporting stays open to anonymous submission
+
+**The question phase 3 had to settle.** `POST /api/v1/reports` was `permitAll`
+with `reporterId` hard-wired to null, because there were no accounts. Now that
+there are, does citizen reporting require a login?
+
+**The decision.** No. The endpoint stays open, and an authenticated reporter's
+identity is *attached when present* rather than demanded.
+
+**Why.** A civic platform that requires registration before somebody can report
+a pothole collects fewer potholes — and it collects them disproportionately
+from people already inclined to trust the municipality, which is the opposite of
+the population the accountability argument is about. Anonymous reporting is the
+lowest-friction path and it is what a citizen uses when they do not trust the
+system enough to register with it.
+
+**How identity attaches.** Spring Security authenticates a valid bearer token
+even on a `permitAll` path, so the controller reads
+`@AuthenticationPrincipal Jwt` and passes the subject into
+`IngestReportRequest.toCommand(reporterId)`. That method has taken the reporter
+id as a parameter since phase 2, specifically so that adding authentication
+could not turn it into a client-supplied field: a client must never be able to
+attribute a report to another user by naming them in the body.
+
+One consequence worth stating: a caller who presents an *invalid* token on this
+path gets 401 rather than being treated as anonymous. That is correct — a
+broken token is a client bug and silently degrading it to anonymous would hide
+it — but it does mean "anonymous" means *no* Authorization header, not a bad
+one.
+
+**The cost, already recorded.** Anonymous reporters cannot vote in
+verification, so an issue reported only anonymously can never be verified.
+DD-006 records that this is measured and published rather than fixed.
+
+---
+
+## DD-018 — What counts as a distinct reporter, now that accounts exist
+
+**The question.** `distinct_reporter_count` feeds the priority score through a
+`12 * log2(1 + reporters)` term. Phase 2 derived it from `device_id`, because
+there were no users. What is a distinct reporter once there are?
+
+**The decision.** Identity wins where it exists:
+
+```sql
+COUNT(DISTINCT COALESCE(reporter_id::text, device_id))
 ```
 
-So `/actuator/metrics` and `/actuator/prometheus` are **exposed but unreachable**.
-They are registered, they are served by the actuator infrastructure, and the
-security chain rejects every anonymous request to them. Since phase 3 has not
-landed there is no authentication mechanism yet either, so at present they are
-unreachable by anyone, through any means.
+An authenticated reporter counts once no matter how many devices they use;
+anonymous reports count once per device.
 
-**Why this is being recorded rather than fixed.** The mismatch is not currently
-causing a defect, and the tight whitelist is the correct default: an allow-list
-that only names what is needed is much safer than one that is widened
-speculatively, because endpoints get added to a chain far more often than they
-get removed. Widening it now would be choosing an access policy for metrics
-before there is any authentication to express that policy in terms of.
+**Why this way round.** The anti-gaming property the term needs is that one
+person cannot manufacture urgency. Counting by device would let one person with
+a phone and a laptop count twice; counting by account collapses them. In the
+other direction, a device identifier is the only handle available for anonymous
+reports, and it is a weak one — trivially reset — which is precisely why it is
+the *fallback* rather than the primary.
 
-It is worth being clear about what is and is not at stake. `/actuator/metrics`
-and especially `/actuator/prometheus` are an information-disclosure surface:
-they publish request counts and latency distributions per endpoint, JVM and pool
-internals, and — for this system — the ingest timer, from which report volume
-and its timing could be inferred. That is not catastrophic for a public
-accountability platform whose issue data is deliberately open, but it is real,
-and it is the sort of thing that gets exposed by accident rather than decided.
+**The known over-count, stated rather than hidden.** Somebody who reports
+anonymously and then registers and reports again from the same device counts as
+two. Deduplicating that would mean linking device identifiers to accounts and
+retaining the link, which is a real privacy cost imposed on anonymous reporters
+— the group least willing to be identified — to correct an error of at most one
+per issue on a logarithmic term. Not worth it.
 
-**What must NOT be inferred from this entry.** That the ingest timer is not
-recording. It is, and `IngestMetricsIT` proves it by asserting on the
-`MeterRegistry` directly rather than through the HTTP endpoint — precisely so
-that this access-control question cannot silently break the observability
-guarantee the week-7 evaluation depends on. The metrics exist; only the HTTP
-route to them is closed.
+**The alternative rejected.** Counting only authenticated reporters, on the
+grounds that they are the only trustworthy signal. Rejected because it would
+give a heavily but anonymously reported street a priority of zero, which is the
+opposite of what the system is for.
 
-**The decision due in phase 3**, once `JwtDecoder` and role-based access are in
-place, is one of:
+---
 
-1. Permit both anonymously, on the argument that a platform whose pitch is
-   "everything here is public, no login" should not exempt its own operational
-   numbers. Cheapest, and consistent with the project's stance elsewhere.
-2. Require `ADMIN` for both. Most conservative, and the conventional choice.
-3. Permit `/actuator/prometheus` only from the scrape source, and require
-   `ADMIN` for `/actuator/metrics`. Correct in principle, but there is no
-   scraper in this deployment, so it would be machinery for a need that does not
-   exist yet.
-4. Narrow the exposure list instead, dropping `prometheus` until something
-   actually scrapes it. Worth considering seriously: an endpoint that nothing
-   consumes is a surface with no offsetting benefit.
+## DD-019 — What authentication does and does not include
 
-**The alternative rejected, for now.** Widening the whitelist in phase 2 to
-match the exposure list. Rejected because it would resolve a security question
-by making the configuration self-consistent rather than by deciding what access
-these endpoints should have — the two are easy to confuse, and only one of them
-is a decision.
+**The decision.** JWT via Spring Security's resource server (DD-007), 15-minute
+access tokens, 30-day refresh tokens, BCrypt at cost 12, four roles. Password
+reset and refresh-token rotation are explicitly cut.
+
+**Three choices inside that are worth defending.**
+
+*Access and refresh tokens are separated by a validated claim.* Both are signed
+with the same key, so without a `typ` claim and a validator that checks it, a
+thirty-day refresh token would be a perfectly valid bearer credential for
+thirty days — silently converting the short access lifetime into a long one.
+Nothing about that failure is visible in ordinary testing: every endpoint keeps
+working. The check runs in both directions, so neither token can stand in for
+the other, and `AuthApiIT` asserts both.
+
+*Token expiry is judged against the application's `Clock`, not the system
+clock.* Spring's default timestamp validator uses `Clock.systemUTC()`. With one
+clock for the whole application, a test that moves time forward to age an issue
+does not accidentally invalidate every token it minted. One clock is also
+simply the correct rule; this was the only place it needed enforcing.
+
+*The seeded org chart ships without credentials.* `V4__org_chart.sql` creates
+department heads, ward officers and an administrator so that the escalation
+ladder resolves to somebody on a fresh database — otherwise every rung is null
+and a breached issue escalates into nobody. Those accounts are created with a
+null `password_hash`, and `AuthService` refuses a null hash before it reaches
+the encoder. A migration is the wrong place for credentials: it is in version
+control, identical in every environment, and applied to production
+automatically. The demo profile sets passwords at startup from configuration,
+which is a deliberate act in one environment rather than a default everywhere.
+
+**What is cut, and why that is safe to say out loud.** No password reset: it
+needs an email or SMS channel, which is a whole subsystem, and no examiner will
+ask a semester project to prove it can send email. No refresh-token rotation
+and no reuse detection: rotation matters when a stolen refresh token must be
+detectable, and detecting it requires storing and invalidating token families —
+worth doing, and not worth doing before the frontend exists. Both are named
+here so that "we didn't get to it" and "we decided against it" are
+distinguishable later.
+
+---
+
+## DD-020 — Two authorisation layers, and why the blueprint's single guard could not work
+
+**The defect.** The blueprint sketches one guard method, `canAct(issueId,
+auth)`, which checks department scope *and*, for staff, that the user is the
+assignee. That method cannot be used on acknowledgement: a new issue has no
+assignee, so every staff member fails it and nobody can acknowledge anything.
+
+**Why it happened.** The sketch conflates two different questions that happen
+to be asked at the same moment. "May this user touch this issue at all?" is a
+property of the user and the issue — department, ward, role. "May this user
+make *this particular move*?" is a property of the transition — only the
+assignee starts work, only a supervisor assigns.
+
+**The fix.** Split them along that line, which is also the line the two
+mechanisms already fall on:
+
+| Layer | Mechanism | Question |
+|---|---|---|
+| Role | `@PreAuthorize("hasAnyRole(...)")` | can this *kind* of user do this *kind* of thing |
+| Scope | `@PreAuthorize("@issueGuard.canAct(#id, authentication)")` | is this issue in the user's department or ward |
+| Transition | the guards in `TransitionPolicy` | is this move legitimate from here, by this actor |
+
+`IS_ASSIGNEE` therefore lives in the transition table, where it applies to
+starting and finishing work and to nothing else.
+
+**One deliberate relaxation.** `IS_ASSIGNEE` passes for supervisors and
+administrators without their being the assignee. A supervisor covering for an
+absent crew member is ordinary municipal practice, and the alternative —
+reassigning the ticket to themselves first — produces a *worse* audit trail,
+because it overwrites who the work was actually given to. The history row
+records who really acted either way.
+
+**A related consequence for ward officers.** The scope check passes a
+supervisor who has a ward and no department, on any issue in that ward. Without
+that clause, level 3 of the escalation ladder would hand issues to somebody who
+could not act on them.
+
+---
+
+## DD-021 — Priority ageing excludes paused time
+
+**The decision.** The `0.15 × age_hours` term measures elapsed time *minus*
+`paused_seconds`.
+
+**Why.** The SLA clock already pauses in PENDING_VERIFICATION, on the grounds
+that a department cannot make citizens vote and should not be charged for the
+wait. Charging that same time in the priority score would make the two halves
+of one policy disagree: the deadline says the department is not accountable for
+those days, and the queue position says it is. It would also produce the wrong
+incentive in the one place the system most needs the right one — submitting a
+fix for verification would push an issue *up* the queue, which is a reason not
+to submit it.
+
+**Tested by** `PriorityCalculatorTest.timeWaitingOnCitizensDoesNotAgeAnIssue`,
+in a unit test rather than through the sweep, because in an integration test an
+ageing issue also breaches and escalates, and a total asserted there would be
+pinning three behaviours at once.
+
+---
+
+## DD-022 — One authoritative phase numbering
+
+**The defect.** Three documents numbered the project's phases and they
+disagreed, which produced a real ambiguity in DD-015 about when the actuator
+decision was due — recorded as phase 5 in one place and phase 3 in another,
+inside the same entry.
+
+| Source | Auth lands at |
+|---|---|
+| `civictrack-java-blueprint.md` §14 build order | phase 5 |
+| `civictrack-project-report.md` §17 timeline | week 3 |
+| The prompt sequence actually being worked through | phase 3 |
+
+Worse, `docs/civictrack-claude-code-prompts.md` was cited as "the authoritative
+build order document" by `SecurityConfig`, by DD-015 and by
+`civictrack-app-blueprint.md` — and **the file did not exist in the
+repository**. Three files pointed at a document nobody could open.
+
+**The fix.** `docs/civictrack-claude-code-prompts.md` now exists, records the
+phases as they are actually being delivered, and is the authoritative
+numbering. The other documents point at it rather than restating it:
+
+- The blueprint's §14 build order keeps its eleven-row table as the *rationale*
+  for the ordering, with a note that the delivered phases collapse its 3, 4 and
+  5 into one and that the numbering there is superseded.
+- The report's §17 timeline keeps its eight weeks, which is a different axis
+  entirely — calendar, not build order — with a note saying so.
+- `README.md` tracks delivery status against the authoritative numbering.
+
+**Why the prompt sequence wins rather than the blueprint.** Because it is what
+happened. Phase 3 as delivered contains the state machine, the SLA engine, the
+escalation ladder and authentication, which is blueprint phases 3, 4 and 5 in
+one step. Renumbering the record to match a plan that was not followed would
+make every future reference ambiguous in the same way this entry exists to fix.
+
+**The consequence, stated so nobody has to work it out.** Everything after auth
+shifts down by two: the photo pipeline is phase 4, verification 5, the frontend
+6, the dashboard 7, moderation 8, and seed/demo/deploy 9.
 
 ---
 

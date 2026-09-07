@@ -1,0 +1,39 @@
+# Demo profile: the same system, with the clock turned up.
+#
+# Nothing here changes behaviour, only durations. That is the point -- a demo
+# that ran different code from the deployment would be a rehearsal for a
+# system nobody ships. What it does change is the time constants, so that a
+# breach, an escalation and a re-arm all happen inside a five-minute slot on a
+# projector rather than over three days.
+#
+# This is emphatically NOT a substitute for the injected Clock. Three-minute
+# SLAs make escalation visible to an audience; they do not let a test assert
+# that a neglected issue's priority is higher at t+200h than at t+0. The demo
+# profile compresses real time; the Clock replaces it.
+
+civictrack:
+  sla:
+    # Sweep every 20 seconds, so the escalation lands while the slide is still
+    # on screen rather than up to five minutes later.
+    cron: "*/20 * * * * *"
+
+    # ~3 minute SLAs. Replaces the category hours outright rather than scaling
+    # them: a 6-hour manhole and a 168-hour signage ticket scaled by the same
+    # factor still differ by 28x, and one of them would not breach on stage.
+    demo-override-hours: 0.05
+
+    # The production floor of two hours would swallow the halving entirely at
+    # these durations -- every escalation would re-arm two hours out and the
+    # ladder would stop moving after the first rung. One minute keeps the
+    # compounding visible: level 1 re-arms 90s out, level 2 45s, and so on.
+    rearm-floor: PT1M
+
+  verification:
+    # Long enough that the "citizens rejected the fix" step is a deliberate tap
+    # on stage rather than a race against an auto-resolve.
+    timeout-hours: 1
+    auto-close-days: 1
+
+logging:
+  level:
+    com.civictrack.sla: DEBUG

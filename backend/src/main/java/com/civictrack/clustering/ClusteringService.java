@@ -13,6 +13,7 @@ import com.civictrack.issue.IssueStatus;
 import com.civictrack.issue.IssueStatusService;
 import com.civictrack.issue.Priority;
 import com.civictrack.issue.PriorityCalculator;
+import com.civictrack.issue.policy.TransitionContext;
 import com.civictrack.report.ClusterDecision;
 import com.civictrack.report.Report;
 import com.civictrack.report.ReportRepository;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -63,6 +65,10 @@ public class ClusteringService {
     private final PriorityCalculator priorityCalculator;
     private final SlaService slaService;
     private final ClusterProperties props;
+    // Injected rather than called statically: first_reported_at is what the
+    // whole SLA clock is measured from, so a test that cannot set it cannot
+    // exercise a deadline at all.
+    private final Clock clock;
 
     /**
      * Ingests one report and returns what happened to it.
@@ -207,7 +213,7 @@ public class ClusteringService {
                                           double weight, ClusterDecision decision,
                                           Double distance, Double effectiveRadius,
                                           Double projectedExtent, String reviewReason) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
 
         Issue issue = new Issue();
         issue.setPublicRef(issueRepo.nextPublicRef());
@@ -255,7 +261,7 @@ public class ClusteringService {
                                      double distance, double effectiveRadius,
                                      CentroidMath.RunningSums projected,
                                      double projectedExtent, double newMemberDistM) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
 
         // Safe to load: the row is already locked by lockMergeCandidateIds, so
         // this is served from the persistence context or a locked row, and no
@@ -288,7 +294,7 @@ public class ClusteringService {
         // Reopen-on-recurrence. A department cannot close a ticket, have the
         // problem recur inside the window, and be handed a fresh clock for it.
         if (issue.getStatus() == IssueStatus.RESOLVED) {
-            reopen(issue, category);
+            reopen(issue, now);
         }
 
         // Must run after the report insert, since it counts member reports.
@@ -299,17 +305,24 @@ public class ClusteringService {
         return outcome(savedReport, issue, decision, distance, effectiveRadius, projectedExtent);
     }
 
-    private void reopen(Issue issue, Category category) {
-        statusService.transition(issue, IssueStatus.REOPENED, IssueStatusService.ACTOR_SYSTEM,
-                null, "Recurrence reported within the reopen window");
-        issue.setReopenCount(issue.getReopenCount() + 1);
-        issue.setResolvedAt(null);
-
-        // DD-005: every increment is capped, from this path as much as from the
-        // SLA sweep. An uncapped increment would climb past the terminal level,
-        // where the ladder resolves to nobody and the issue silently loses its
-        // owner -- the opposite of what escalation is for.
-        issue.setEscalationLevel(Math.min(4, Math.max(1, issue.getEscalationLevel() + 1)));
+    /**
+     * Reopen-on-recurrence. The candidate query only offered this issue as a
+     * merge target because it resolved inside the category's reopen window, so
+     * the recurrence guard is satisfied by construction -- and it is still
+     * asserted rather than assumed, because the transition table is the one
+     * place that rule is meant to be readable from.
+     *
+     * <p>The reopen count and the capped escalation increment are side effects
+     * of the transition itself and live in IssueStatusService, so that the
+     * recurrence path and the SLA sweep cannot drift apart on what reopening
+     * means.
+     */
+    private void reopen(Issue issue, Instant now) {
+        statusService.systemTransition(issue, IssueStatus.REOPENED,
+                TransitionContext.at(now)
+                        .recurrenceWithinWindow(true)
+                        .note("Recurrence reported within the reopen window")
+                        .build());
     }
 
     // ------------------------------------------------------------------

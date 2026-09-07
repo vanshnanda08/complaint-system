@@ -88,9 +88,26 @@ civictrack:
   sla:
     cron: "0 */5 * * * *"
     max-escalation-level: 4
+    batch-size: 100
+    # Floor on a re-armed deadline after an escalation. Without it, halving
+    # eventually produces deadlines minutes away, which no crew can meet and
+    # which therefore stop carrying any information.
+    rearm-floor: PT2H
+    # Demo profile only; see application-demo.yml. Zero everywhere else, and
+    # SlaServiceTest asserts that it is zero so it cannot be left switched on.
+    demo-override-hours: 0
   verification:
     timeout-hours: 72
     auto-close-days: 7
+  security:
+    jwt:
+      # Development default. Deployment MUST override it: an attacker who knows
+      # the signing key can mint an ADMIN token, which is the whole system.
+      # TokenService refuses to start on anything shorter than 32 bytes.
+      secret: ${JWT_SECRET:dev-only-secret-change-me-in-every-real-deployment}
+      issuer: civictrack
+      access-ttl: PT15M
+      refresh-ttl: P30D
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
 

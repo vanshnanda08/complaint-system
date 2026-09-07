@@ -38,8 +38,15 @@ public class PriorityCalculator {
     private static final double ESCALATION_WEIGHT = 20.0;
     private static final double REOPEN_WEIGHT = 15.0;
 
+    /**
+     * The age term excludes time the SLA clock spent paused, so an issue does
+     * not climb the queue while the department is waiting on citizens to vote.
+     * Charging that time here while explicitly not charging it in the deadline
+     * would make the two halves of the same policy disagree.
+     */
     public double score(Issue issue, Category category, Instant now) {
-        double ageHours = Duration.between(issue.getFirstReportedAt(), now).toSeconds() / 3600.0;
+        long elapsed = Duration.between(issue.getFirstReportedAt(), now).toSeconds();
+        double ageHours = Math.max(0, elapsed - issue.getPausedSeconds()) / 3600.0;
 
         return category.getSeverityWeight()
                 + REPORTER_WEIGHT * log2(1 + issue.getDistinctReporterCount())

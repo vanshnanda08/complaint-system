@@ -1616,6 +1616,13 @@ Generate ~150 issues over 90 days across 4 wards, with realistic status distribu
 
 ## 14. Build order
 
+> **Numbering superseded.** `docs/civictrack-claude-code-prompts.md` is the
+> authoritative phase numbering for this project, and the phases as delivered
+> collapse 3, 4 and 5 below into a single phase 3, shifting everything after it
+> down by two. The table stays because the *rationale* in its right-hand column
+> — why clustering precedes the state machine, why auth is late — is the part
+> worth reading. See DD-022.
+
 | Phase | Deliverable | Why this order |
 |---|---|---|
 | **1** | Flyway schema, entities, PostGIS wired, one `POST /reports` that always creates a new issue, health check deployed | Get the spatial round-trip working end to end before any logic. This is where you'll lose a day to lat/lng ordering — better now than in week 5 |
@@ -1643,7 +1650,7 @@ Generate ~150 issues over 90 days across 4 wards, with realistic status distribu
 5. **(1:40)** Open the supervisor review tool. Show three report pins with accuracy circles and one issue centroid. *"Three pieces of evidence, one work item. That separation is the whole schema decision."*
 6. **(2:00)** Report a garbage dump at the **exact same coordinates**. New issue, count 1. "Same place, different problem — category is a hard precondition, not a similarity score."
 7. **(2:30)** The pre-seeded issue breaches. Card turns red on the public dashboard, escalation level 0 → 1, owner changes from crew member to supervisor, breach appears in the live list. No page refresh.
-8. **(3:00)** Staff view: mark it resolved. It **will not accept** the transition without a proof photo — show the 400. Upload the photo → `PENDING_VERIFICATION`, not resolved.
+8. **(3:00)** Staff view: mark it resolved. It **will not accept** the transition without a proof photo — show the 409, and read the `guard` field in the problem response aloud: `PROOF_PHOTO_PRESENT`. Upload the photo → `PENDING_VERIFICATION`, not resolved. (409 rather than 400: the request is well-formed and the caller is entitled to make it; it conflicts with the issue's state. All three transition refusals are 401/403/409 — see DD-020.)
 9. **(3:30)** Phone 1 gets the verification prompt, taps "Not fixed." Issue → `REOPENED`, escalation level up, SLA halved. *"The department doesn't get to decide whether it's fixed."*
 10. **(4:00)** Back to the dashboard: reopen rate ticked up for that ward. "That number is public, and that's the point."
 

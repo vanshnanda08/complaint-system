@@ -104,16 +104,49 @@ Rationale for each, and for every other non-obvious call in the project, is in
 
 ## Build order
 
+Phase numbering is authoritative in
+[docs/civictrack-claude-code-prompts.md](docs/civictrack-claude-code-prompts.md),
+which also carries the manual verification steps for each phase. The blueprint's
+own eleven-phase table is superseded (DD-022): phase 3 here delivers what it
+listed as 3, 4 and 5.
+
 | Phase | Deliverable | Status |
 |---|---|---|
 | 1 | Flyway schema, PostGIS wired, health check, `GeoFactory`, ward canary | **done** |
 | 2 | Clustering engine, candidate query, weighted centroid, extent cap, advisory lock, concurrency test | **done** |
-| 3 | State machine, transition policy, status history, staff queue | next |
-| 4 | SLA computation, escalation ladder, ShedLock, priority ageing | |
-| 5 | Auth and RBAC via the OAuth2 resource server | |
-| 6 | Cloudinary, photo validation, dHash, proof-photo flow | |
-| 7 | Verification quorum, sweep job, auto-close | |
-| 8 | Next.js: report flow, map, issue detail, cluster inspector | |
-| 9 | Public dashboard, SSE | |
-| 10 | Split/merge moderation tool | |
-| 11 | Seed corpus, demo profile, deploy, rehearse | |
+| 3 | State machine and `TransitionPolicy`, status history, staff queue, SLA clock, escalation ladder, ShedLock sweep, priority ageing, auth and RBAC | **done** |
+| 4 | Cloudinary, photo validation, dHash, proof-photo flow, device throttling | next |
+| 5 | Verification quorum, timeout sweep, auto-close, notifications | |
+| 6 | Next.js: report flow, map, issue detail, cluster inspector | |
+| 7 | Public dashboard, SSE | |
+| 8 | Split/merge moderation tool | |
+| 9 | Seed corpus, demo profile, deploy, rehearse | |
+
+## Running the demo profile
+
+```bash
+cd backend && SPRING_PROFILES_ACTIVE=demo mvn spring-boot:run
+```
+
+Three-minute SLAs and a twenty-second sweep, so a breach, an escalation and a
+re-armed deadline all happen inside a five-minute slot on a projector. It runs
+the same code as any other profile — only the durations change.
+
+The org-chart accounts seeded by `V4__org_chart.sql` ship with **no password**
+and cannot be logged into. The demo profile gives them one at startup, from
+configuration:
+
+```bash
+SPRING_PROFILES_ACTIVE=demo CIVICTRACK_DEMO_STAFF_PASSWORD=... mvn spring-boot:run
+```
+
+A migration is the wrong place for credentials — it is in version control,
+identical everywhere, and applied to production automatically — so what it ships
+is an org chart, and enabling logins is a deliberate act in one environment.
+
+## Security notes
+
+`JWT_SECRET` **must** be set in any real deployment. The development default in
+`application.yml` is public knowledge, and anybody holding the signing key can
+mint an ADMIN token. The application refuses to start on a key shorter than 32
+bytes.

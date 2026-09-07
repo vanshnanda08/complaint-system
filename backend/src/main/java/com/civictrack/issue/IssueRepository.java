@@ -1,12 +1,16 @@
 package com.civictrack.issue;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface IssueRepository extends JpaRepository<Issue, UUID> {
@@ -160,6 +164,143 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
                    lpad(nextval('issue_public_ref_seq')::text, 6, '0')
             """, nativeQuery = true)
     String nextPublicRef();
+
+
+    // ------------------------------------------------------------------
+    // phase 3: the SLA sweep
+    // ------------------------------------------------------------------
+
+    /**
+     * Breached issues, row-locked, oldest deadline first.
+     *
+     * <p>The breach predicate is evaluated in SQL rather than in Java because
+     * the alternative is loading every open issue to ask each one whether it is
+     * late. It mirrors {@link com.civictrack.sla.SlaService#isBreached} exactly:
+     * the clock has to be running -- PENDING_VERIFICATION is excluded, which is
+     * what "the department is not charged for waiting on citizens" means in
+     * practice -- and {@code paused_seconds} is added to the stored deadline
+     * before the comparison. {@code SlaBreachPredicateIT} pins the two
+     * definitions together so they cannot drift.
+     *
+     * <p>{@code SKIP LOCKED} means two workers take disjoint slices instead of
+     * queueing behind each other. It is a contention measure, not the
+     * correctness measure: correctness comes from the compare-and-swap and the
+     * unique constraint, both of which hold even if this query returned the
+     * same row to both workers.
+     */
+    @Query(value = """
+            SELECT i.id
+            FROM issues i
+            WHERE i.status IN ('NEW','ACKNOWLEDGED','ASSIGNED','IN_PROGRESS','REOPENED')
+              AND i.escalation_level < :maxLevel
+              AND CAST(:now AS timestamptz)
+                  > i.due_at + make_interval(secs => i.paused_seconds)
+            ORDER BY i.due_at ASC
+            LIMIT :batch
+            FOR UPDATE SKIP LOCKED
+            """, nativeQuery = true)
+    List<UUID> lockBreachedIssueIds(@Param("now") Instant now,
+                                    @Param("maxLevel") int maxLevel,
+                                    @Param("batch") int batch);
+
+    /**
+     * Issues that have exhausted the ladder and are still breached.
+     *
+     * <p>DD-005: level 4 is terminal, so these stop escalating. They do not
+     * stop being visible -- that is the whole point of capping rather than
+     * letting the number climb. This list is what the public dashboard's
+     * chronic-breach panel is built from.
+     */
+    @Query(value = """
+            SELECT i.id
+            FROM issues i
+            WHERE i.status IN ('NEW','ACKNOWLEDGED','ASSIGNED','IN_PROGRESS','REOPENED')
+              AND i.escalation_level >= :maxLevel
+              AND CAST(:now AS timestamptz)
+                  > i.due_at + make_interval(secs => i.paused_seconds)
+            ORDER BY i.due_at ASC
+            """, nativeQuery = true)
+    List<UUID> findChronicBreachIds(@Param("now") Instant now, @Param("maxLevel") int maxLevel);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM Issue i WHERE i.id = :id")
+    Optional<Issue> findByIdForUpdate(@Param("id") UUID id);
+
+    /**
+     * The third idempotency layer: advance the level only if nobody else
+     * already did.
+     *
+     * <p>{@code WHERE escalation_level = :expected} returns zero rows if a
+     * concurrent transaction moved it first, and the caller treats zero as
+     * "somebody beat me" and rolls back rather than writing a second
+     * escalation. This is what makes running the sweep twice, three times, or
+     * on two instances at once produce the same result as running it once.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Issue i
+               SET i.escalationLevel = :next,
+                   i.assignedTo = :owner,
+                   i.lastEscalatedAt = :now,
+                   i.dueAt = :newDue,
+                   i.updatedAt = :now
+             WHERE i.id = :id AND i.escalationLevel = :expected
+            """)
+    int advanceEscalation(@Param("id") UUID id,
+                          @Param("expected") int expected,
+                          @Param("next") int next,
+                          @Param("owner") UUID owner,
+                          @Param("newDue") Instant newDue,
+                          @Param("now") Instant now);
+
+    /**
+     * A page of open issues for the priority recompute (DD-004).
+     *
+     * <p>Ordered by id rather than by anything mutable, because the sweep pages
+     * through this set while updating the very columns it might otherwise be
+     * ordered by -- which would let an issue be visited twice or skipped
+     * entirely as its score changed underneath the cursor.
+     */
+    @Query(value = """
+            SELECT i.id FROM issues i
+            WHERE i.status NOT IN ('CLOSED','REJECTED','RESOLVED')
+              AND i.id > CAST(:after AS uuid)
+            ORDER BY i.id ASC
+            LIMIT :batch
+            """, nativeQuery = true)
+    List<UUID> findOpenIdsAfter(@Param("after") UUID after, @Param("batch") int batch);
+
+    List<Issue> findByIdIn(Collection<UUID> ids);
+
+    /**
+     * The staff queue: one department's open work, most urgent first.
+     *
+     * <p>Sorted by score and then by deadline, in that order, because they
+     * disagree usefully. Score answers "how much does this matter"; the
+     * deadline answers "how little time is left". A queue sorted only by
+     * deadline puts a trivial ticket that is nearly due above a critical one
+     * reported this morning, which is how SLA-driven systems end up optimising
+     * for the metric instead of for the city.
+     */
+    @Query(value = """
+            SELECT i.* FROM issues i
+            WHERE i.status NOT IN ('CLOSED','REJECTED','RESOLVED')
+              AND (CAST(:departmentId AS uuid) IS NULL OR i.department_id = CAST(:departmentId AS uuid))
+              AND (CAST(:wardId AS uuid) IS NULL OR i.ward_id = CAST(:wardId AS uuid))
+            ORDER BY i.priority_score DESC, i.due_at ASC
+            LIMIT :limit OFFSET :offset
+            """, nativeQuery = true)
+    List<Issue> findQueue(@Param("departmentId") UUID departmentId,
+                          @Param("wardId") UUID wardId,
+                          @Param("limit") int limit,
+                          @Param("offset") int offset);
+
+    /** Whether this citizen is one of the issue's reporters. Used by the verify guard. */
+    @Query(value = """
+            SELECT EXISTS (SELECT 1 FROM reports r
+                           WHERE r.issue_id = :issueId AND r.reporter_id = :userId)
+            """, nativeQuery = true)
+    boolean existsReportBy(@Param("issueId") UUID issueId, @Param("userId") UUID userId);
 
     /** Values re-read under the row lock. See {@link #reReadLockedCandidates}. */
     interface CandidateRow {

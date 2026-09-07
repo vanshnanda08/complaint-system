@@ -13,3 +13,14 @@ logging:
   level:
     com.civictrack: DEBUG
     org.flywaydb: INFO
+
+civictrack:
+  sla:
+    # Spring's own "disabled" cron value. A background sweep firing mid-test
+    # would mutate the very escalation levels the tests assert on, and the
+    # resulting flake would look exactly like the concurrency bug the suite
+    # exists to rule out. Tests drive the sweep by calling it.
+    cron: "-"
+  security:
+    jwt:
+      secret: test-only-signing-secret-at-least-32-bytes-long

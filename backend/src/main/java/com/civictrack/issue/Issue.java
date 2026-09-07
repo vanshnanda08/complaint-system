@@ -123,8 +123,45 @@ public class Issue {
     @Column(name = "escalation_level", nullable = false)
     private int escalationLevel;
 
+    @Column(name = "last_escalated_at")
+    private Instant lastEscalatedAt;
+
+    // ---- ownership and outcome ----------------------------------------
+    // Written only by IssueStatusService, alongside the status they belong
+    // to. Keeping them next to the transition that sets them is what stops
+    // an issue reaching RESOLVED with a null resolved_at, which no amount
+    // of nullable columns would have caught.
+
+    @Column(name = "acknowledged_at")
+    private Instant acknowledgedAt;
+
+    @Column(name = "assigned_to")
+    private UUID assignedTo;
+
+    @Column(name = "assigned_at")
+    private Instant assignedAt;
+
+    @Column(name = "resolution_note")
+    private String resolutionNote;
+
+    @Column(name = "resolution_photo_url")
+    private String resolutionPhotoUrl;
+
+    @Column(name = "resolved_by")
+    private UUID resolvedBy;
+
     @Column(name = "resolved_at")
     private Instant resolvedAt;
+
+    @Column(name = "closed_at")
+    private Instant closedAt;
+
+    @Column(name = "rejected_reason")
+    private String rejectedReason;
+
+    /** DD-006. Set when an issue resolves through the timeout with no votes. */
+    @Column(name = "resolved_without_verification", nullable = false)
+    private boolean resolvedWithoutVerification;
 
     @Column(name = "reopen_count", nullable = false)
     private int reopenCount;
