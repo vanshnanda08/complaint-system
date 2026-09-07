@@ -1,0 +1,6 @@
+civictrack:
+  seed:
+    enabled: true
+    corpus-size: 2000
+    random-seed: 42
+    labels-file-path: "ground_truth_labels.csv"

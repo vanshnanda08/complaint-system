@@ -548,19 +548,17 @@ to be redone whenever the runtime changes.
 
 ## DD-015 — Actuator exposure and the security whitelist disagree
 
-**Status: open.** Recorded now, decided in **phase 5 of the build order**, when
+**Status: open.** Recorded now, decided in **phase 3 of the build order**, when
 authentication lands.
 
-> **On the phase number, because two schemes are in play and they disagree.**
+> **On the phase number, because multiple schemes are in play and they disagree.**
 > The build order in `civictrack-java-blueprint.md` §14 (mirrored in the README)
 > has eleven phases, and auth is phase 5. The delivery timeline in
-> `civictrack-project-report.md` §17 has eight weeks, and auth is week 3,
-> bundled with the state machine and SLA. Both are correct in their own scheme;
-> they are not the same axis. This project tracks work by the **build order**,
-> so "phase 5" here means the auth phase — which falls in week 3 of the
-> timeline. Phase 3 of the build order is the state machine, where there is no
-> authentication yet to express an access policy in terms of, so deferring to
-> phase 3 would mean deciding this before the mechanism exists.
+> `civictrack-project-report.md` §17 has eight weeks, and auth is week 3.
+> However, `docs/civictrack-claude-code-prompts.md` is the **authoritative
+> prompt and build order document for this project**, and it explicitly lands
+> auth in **Phase 3**. Therefore, we defer this decision to Phase 3, where
+> the authentication mechanism is actually built.
 
 **The current state.** `application.yml` exposes four actuator endpoints:
 
@@ -576,7 +574,7 @@ management.endpoints.web.exposure.include: health,info,metrics,prometheus
 
 So `/actuator/metrics` and `/actuator/prometheus` are **exposed but unreachable**.
 They are registered, they are served by the actuator infrastructure, and the
-security chain rejects every anonymous request to them. Since phase 5 has not
+security chain rejects every anonymous request to them. Since phase 3 has not
 landed there is no authentication mechanism yet either, so at present they are
 unreachable by anyone, through any means.
 
@@ -602,7 +600,7 @@ that this access-control question cannot silently break the observability
 guarantee the week-7 evaluation depends on. The metrics exist; only the HTTP
 route to them is closed.
 
-**The decision due in phase 5**, once `JwtDecoder` and role-based access are in
+**The decision due in phase 3**, once `JwtDecoder` and role-based access are in
 place, is one of:
 
 1. Permit both anonymously, on the argument that a platform whose pitch is

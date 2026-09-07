@@ -21,7 +21,8 @@ import java.util.List;
 /**
  * Phase 1 security baseline.
  *
- * <p>Authentication itself lands in phase 5, and when it does it will be
+ * <p>Authentication itself lands in phase 3 (per docs/civictrack-claude-code-prompts.md,
+ * which is the authoritative build order), and when it does it will be
  * Spring Security's OAuth2 resource server — {@code JwtDecoder} and
  * {@code JwtAuthenticationConverter} — not a hand-written filter. Until then
  * this chain is deliberately closed: only the public read surface and the
