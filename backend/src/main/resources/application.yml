@@ -1,0 +1,99 @@
+spring:
+  application:
+    name: civictrack
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/civictrack}
+    username: ${DATABASE_USER:civictrack}
+    password: ${DATABASE_PASSWORD:civictrack}
+    hikari:
+      # Free-tier Postgres caps connections hard. This number is the real
+      # concurrency ceiling of the whole application.
+      maximum-pool-size: 8
+      leak-detection-threshold: 20000
+
+  jpa:
+    # NON-NEGOTIABLE. Defaults to true, which holds a database connection
+    # for the entire request lifecycle. With the pool capped at 8, the
+    # 20-thread concurrency test exhausts the pool and the failure presents
+    # as a phantom locking bug in the clustering engine. Do not change this.
+    open-in-view: false
+    hibernate:
+      # Flyway owns the schema. Never 'update'. Hibernate cannot generate
+      # the composite btree_gist index over a cast expression, so schema
+      # authority has to sit in migrations; validate makes the app refuse
+      # to start if entities and migrations have drifted.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+        default_batch_fetch_size: 32
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  servlet:
+    multipart:
+      max-file-size: 8MB
+      max-request-size: 10MB
+
+  threads:
+    # Enabled. No throughput claim is made on this basis: the Hikari pool
+    # ceiling of 8 is the binding constraint on this workload, not the
+    # thread model. The argument for Java here rests on declarative
+    # transaction management and scheduling.
+    virtual:
+      enabled: true
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: civictrack
+    distribution:
+      # p50/p95/p99 on the ingest path, instrumented from day one because
+      # the week-7 evaluation needs these percentiles and retrofitting a
+      # timing harness later produces worse numbers than Micrometer does.
+      percentiles-histogram:
+        http.server.requests: true
+        civictrack.ingest: true
+      percentiles:
+        http.server.requests: 0.5, 0.95, 0.99
+        civictrack.ingest: 0.5, 0.95, 0.99
+
+civictrack:
+  clustering:
+    # Properties of the sensing apparatus and of the concurrency strategy.
+    # Anything that varies by defect type lives in the categories table
+    # instead (standing rule 1).
+    min-accuracy-m: 3
+    max-accuracy-m: 150
+    accuracy-contribution-cap-m: 60
+    low-confidence-factor: 1.5
+    cell-grid-degrees: 0.002
+    search-radius-padding-m: 120
+  sla:
+    cron: "0 */5 * * * *"
+    max-escalation-level: 4
+  verification:
+    timeout-hours: 72
+    auto-close-days: 7
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+logging:
+  level:
+    com.civictrack: DEBUG

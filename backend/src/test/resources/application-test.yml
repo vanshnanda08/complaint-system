@@ -1,0 +1,15 @@
+# Datasource properties are supplied by @DynamicPropertySource from the
+# Testcontainers PostGIS container. Everything here is deliberately identical
+# to production, because a test profile that relaxes constraints tests a
+# system nobody deploys.
+spring:
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+logging:
+  level:
+    com.civictrack: DEBUG
+    org.flywaydb: INFO

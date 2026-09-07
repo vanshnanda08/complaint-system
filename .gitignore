@@ -1,0 +1,22 @@
+# Java / Maven
+backend/target/
+*.class
+*.jar
+!**/maven-wrapper.jar
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env*.local
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# Local secrets
+.env

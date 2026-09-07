@@ -1,0 +1,30 @@
+# Local development database.
+#
+# postgis/postgis:16-3.4 is pinned to match production exactly. The same image
+# tag is used by the Testcontainers integration tests -- spatial behaviour is
+# not portable, and there is no H2 fallback anywhere in this project.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: civictrack-db
+    environment:
+      POSTGRES_DB: civictrack
+      POSTGRES_USER: civictrack
+      POSTGRES_PASSWORD: civictrack
+    ports:
+      # Mapped to 5432, the DIRECT Postgres port. In deployed environments the
+      # application must also use the direct endpoint and never a transaction-
+      # mode pooler: pg_advisory_xact_lock and FOR UPDATE row locks both need a
+      # stable session, and Hibernate's server-side prepared statements are
+      # incompatible with transaction pooling. Hikari is already the pool.
+      - "5432:5432"
+    volumes:
+      - civictrack-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U civictrack -d civictrack"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  civictrack-pgdata:
