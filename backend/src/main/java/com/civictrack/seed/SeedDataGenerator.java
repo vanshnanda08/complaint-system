@@ -30,11 +30,26 @@ import java.util.*;
 @Slf4j
 public class SeedDataGenerator implements CommandLineRunner {
 
+    /** Stand-in photo for seeded reports. Must be a URL that resolves. */
+    private static final String SEED_PHOTO_URL =
+            "https://res.cloudinary.com/demo/image/upload/sample.jpg";
+
     private final SeedProperties props;
     private final CategoryRepository categoryRepo;
     private final WardRepository wardRepo;
     private final ClusteringService clusteringService;
     private final JdbcTemplate jdbcTemplate;
+
+    /**
+     * Standing rule: time comes from the injected clock, never from
+     * {@code Instant.now()}. It matters here even though this is a generator
+     * rather than a service -- the corpus is spread backwards over a window
+     * from "now", and the ground-truth labels written alongside it are only
+     * reproducible if that origin is reproducible. With a fixed random seed and
+     * a fixed clock the same corpus comes out twice, which is what the phase-8
+     * evaluation needs in order to compare runs.
+     */
+    private final java.time.Clock clock;
 
     record GeneratedReport(
         UUID defectId,
@@ -65,7 +80,7 @@ public class SeedDataGenerator implements CommandLineRunner {
         }
 
         List<GeneratedReport> reportsToIngest = new ArrayList<>();
-        Instant now = Instant.now();
+        Instant now = clock.instant();
 
         int targetReports = props.corpusSize();
         int generatedCount = 0;
@@ -130,12 +145,21 @@ public class SeedDataGenerator implements CommandLineRunner {
             IngestReportCommand cmd = new IngestReportCommand(
                 r.categoryCode(), r.lat(), r.lng(), r.accuracy(), false,
                 "Generated report for " + r.categoryCode(), null, null,
-                "http://example.com/photo.jpg", null, r.reporterId(), r.deviceId()
+                // A URL that actually resolves. The previous value,
+                // http://example.com/photo.jpg, 404s -- so every photo on every
+                // issue page in a seeded environment rendered as a broken image
+                // and the whole application looked broken to anybody running it
+                // without a Cloudinary account. The frontend now degrades to a
+                // "Photo unavailable" panel rather than a broken-image icon, but
+                // the seed corpus should not be exercising that path by default.
+                SEED_PHOTO_URL, null, r.reporterId(), r.deviceId()
             );
 
             ClusterOutcome outcome = clusteringService.ingest(cmd);
             
-            // Retroactively fix the timestamps since ingest uses Instant.now()
+            // Retroactively fix the timestamps: ingest stamps rows with the
+            // clock's current instant, and the corpus needs them spread back
+            // over a realistic window.
             jdbcTemplate.update(
                 "UPDATE reports SET created_at = ? WHERE id = ?",
                 java.sql.Timestamp.from(r.simulatedTime()), outcome.reportId()

@@ -1,0 +1,265 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   CivicTrack design tokens
+   --------------------------------------------------------------------------
+   Blueprint 1.3 (colour), 1.4 (type), 1.5 (layout).
+
+   THE ONE RULE THIS FILE EXISTS TO ENFORCE:
+   colour means status, and nothing else is coloured. There is no brand accent,
+   no hero gradient, no tinted illustration. If a component needs colour and it
+   is not encoding a status value, the component is wrong -- reach for weight,
+   size, rule, or space instead.
+
+   Status is never encoded by colour ALONE. Every status carries a colour, a
+   shape (the left rule treatment plus a glyph) and a word. That is not a
+   nicety for colour-blind users bolted on afterwards; it is the only reason
+   this palette can work at all, because three statuses deliberately share one
+   colour (see below) and the word is what separates them.
+
+   HOW TO SWAP PALETTES: replace the :root block below with token set B or C.
+   Everything else follows, because @theme inline emits var() references rather
+   than copying values. The one thing a swap does NOT carry is the font, which
+   is loaded in src/app/layout.tsx -- each set names the two families it wants
+   and the swap is a one-line change there.
+   ========================================================================== */
+
+:root {
+  /* ---- TOKEN SET A -- "Cool paper" (ACTIVE) ------------------------------
+     Fonts: IBM Plex Sans / IBM Plex Mono.
+     Plex is chosen for three specific reasons, not as a default: genuine
+     tabular figures, which the queues and dashboard need for column
+     alignment; legibility held at 14px on low-density screens; and IBM Plex
+     Sans Devanagari exists as a sibling family, so a future Hindi or Punjabi
+     interface is not a typographic redesign. */
+
+  --ink: #14181a;
+  --ink-muted: #5a6469;
+  --surface: #f7f8f7;
+  --surface-raised: #ffffff;
+  --rule: #d8dcda;
+
+  /* The ONLY saturated colour in the system.
+     Measured contrast against #F7F8F7 / #FFFFFF, sRGB:
+       new 7.12/7.58  active 6.29/6.70  pending 4.72/5.02  resolved 4.71/5.02
+       reopened 6.67/7.10  breached 6.08/6.47  closed 7.17/7.63
+       rejected 4.51/4.80
+     All clear WCAG AA for normal text on both surfaces. `rejected` clears it
+     by 0.01 and has no margin: darken it before reusing it anywhere smaller
+     than 13px. */
+  --st-new: #475569;
+  --st-active: #1d4ed8;
+  --st-pending: #b45309;
+  --st-resolved: #15803d;
+  --st-reopened: #6d28d9;
+  --st-breached: #b91c1c;
+  --st-closed: #57534e;
+  --st-rejected: #78716c;
+
+  --font-stack-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-stack-mono: var(--font-plex-mono), ui-monospace, "SF Mono", monospace;
+
+  /* Type. Sentence case throughout; no all-caps labels, no eyebrow text. */
+  --size-display: 2rem;      --lh-display: 2.25rem;  --ls-display: -0.02em;
+  --size-heading: 1.25rem;   --lh-heading: 1.75rem;  --ls-heading: -0.01em;
+  --size-body: 1rem;         --lh-body: 1.625rem;
+  --size-dense: 0.875rem;    --lh-dense: 1.25rem;
+  --size-meta: 0.8125rem;    --lh-meta: 1.125rem;
+  --size-ref: 0.875rem;      --lh-ref: 1.25rem;
+
+  /* Layout. Base unit 4px; sections 32px apart, related items 8px.
+     No radius above 4px, and no shadow anywhere except the sticky header. */
+  --measure-prose: 68ch;
+  --measure-form: 44ch;
+  --radius: 4px;
+  --radius-sm: 2px;
+  --hit-min: 48px;     /* one-handed outdoor use, blueprint 8 */
+}
+
+/* --------------------------------------------------------------------------
+   TOKEN SET B -- "Public notice"
+   Fonts: Source Sans 3 / Source Code Pro (swap in layout.tsx).
+   A warmer paper and a heavier, higher-contrast status palette, closer to
+   printed municipal signage. The statuses sit darker so they hold up when a
+   page is photocopied or screenshotted and recompressed, which is what
+   actually happens to a councillor's office screenshot.
+   Same rule holds: colour AND shape AND word, never colour alone.
+
+:root {
+  --ink: #1a1714;
+  --ink-muted: #635c54;
+  --surface: #faf8f4;
+  --surface-raised: #ffffff;
+  --rule: #ded8cd;
+
+  --st-new: #44403c;
+  --st-active: #1e40af;
+  --st-pending: #92400e;
+  --st-resolved: #166534;
+  --st-reopened: #5b21b6;
+  --st-breached: #991b1b;
+  --st-closed: #57534e;
+  --st-rejected: #6b7280;
+
+  --font-stack-sans: var(--font-alt-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-stack-mono: var(--font-alt-mono), ui-monospace, "SF Mono", monospace;
+
+  --size-display: 2.125rem;  --lh-display: 2.375rem; --ls-display: -0.015em;
+  --size-heading: 1.3125rem; --lh-heading: 1.75rem;  --ls-heading: -0.005em;
+  --size-body: 1.0625rem;    --lh-body: 1.6875rem;
+  --size-dense: 0.9375rem;   --lh-dense: 1.3125rem;
+  --size-meta: 0.8125rem;    --lh-meta: 1.125rem;
+  --size-ref: 0.9375rem;     --lh-ref: 1.3125rem;
+
+  --measure-prose: 66ch;
+  --measure-form: 44ch;
+  --radius: 2px;
+  --radius-sm: 1px;
+  --hit-min: 48px;
+}
+   -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+   TOKEN SET C -- "High glare"
+   Fonts: Inter Tight / JetBrains Mono (swap in layout.tsx).
+   Tuned for the constraint the blueprint says wins every conflict: a cheap
+   Android in Punjab daylight. Near-white ground for maximum panel brightness,
+   a near-black ink, and statuses pushed darker still so they survive both the
+   glare and the aggressive auto-contrast cheap panels apply. Type runs one
+   step larger at body and dense sizes, because at arm's length in sun the
+   14px row is the first thing to go.
+   Same rule holds: colour AND shape AND word, never colour alone.
+
+:root {
+  --ink: #0b0d0e;
+  --ink-muted: #4b5459;
+  --surface: #fdfdfd;
+  --surface-raised: #ffffff;
+  --rule: #cfd4d6;
+
+  --st-new: #334155;
+  --st-active: #1e3a8a;
+  --st-pending: #9a3412;
+  --st-resolved: #14532d;
+  --st-reopened: #4c1d95;
+  --st-breached: #7f1d1d;
+  --st-closed: #44403c;
+  --st-rejected: #57534e;
+
+  --font-stack-sans: var(--font-alt-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-stack-mono: var(--font-alt-mono), ui-monospace, "SF Mono", monospace;
+
+  --size-display: 2.25rem;   --lh-display: 2.5rem;   --ls-display: -0.02em;
+  --size-heading: 1.375rem;  --lh-heading: 1.875rem; --ls-heading: -0.01em;
+  --size-body: 1.0625rem;    --lh-body: 1.75rem;
+  --size-dense: 0.9375rem;   --lh-dense: 1.375rem;
+  --size-meta: 0.875rem;     --lh-meta: 1.25rem;
+  --size-ref: 0.9375rem;     --lh-ref: 1.375rem;
+
+  --measure-prose: 64ch;
+  --measure-form: 44ch;
+  --radius: 4px;
+  --radius-sm: 2px;
+  --hit-min: 48px;
+}
+   -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+   Tailwind theme.
+   `inline` matters: it makes the generated utilities emit var(--ink) rather
+   than baking #14181a into the stylesheet, which is what lets a :root swap
+   above change the whole interface without regenerating anything.
+   -------------------------------------------------------------------------- */
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-rule: var(--rule);
+
+  --color-st-new: var(--st-new);
+  --color-st-active: var(--st-active);
+  --color-st-pending: var(--st-pending);
+  --color-st-resolved: var(--st-resolved);
+  --color-st-reopened: var(--st-reopened);
+  --color-st-breached: var(--st-breached);
+  --color-st-closed: var(--st-closed);
+  --color-st-rejected: var(--st-rejected);
+
+  --font-sans: var(--font-stack-sans);
+  --font-mono: var(--font-stack-mono);
+
+  --text-display: var(--size-display);
+  --text-display--line-height: var(--lh-display);
+  --text-display--letter-spacing: var(--ls-display);
+  --text-display--font-weight: 600;
+
+  --text-heading: var(--size-heading);
+  --text-heading--line-height: var(--lh-heading);
+  --text-heading--letter-spacing: var(--ls-heading);
+  --text-heading--font-weight: 600;
+
+  --text-body: var(--size-body);
+  --text-body--line-height: var(--lh-body);
+  --text-body--font-weight: 400;
+
+  --text-dense: var(--size-dense);
+  --text-dense--line-height: var(--lh-dense);
+  --text-dense--font-weight: 400;
+
+  --text-meta: var(--size-meta);
+  --text-meta--line-height: var(--lh-meta);
+  --text-meta--font-weight: 500;
+
+  --text-ref: var(--size-ref);
+  --text-ref--line-height: var(--lh-ref);
+  --text-ref--font-weight: 500;
+
+  --radius-token: var(--radius);
+  --radius-token-sm: var(--radius-sm);
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+html {
+  /* No dark mode. Blueprint 1.7 records the reason: a second palette to keep
+     accessible, for no established user need. Declaring the scheme stops the
+     browser from helpfully inverting form controls on a dark-mode device. */
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-stack-sans);
+  font-size: var(--size-body);
+  line-height: var(--lh-body);
+  /* Plex ships genuine tabular figures. Queues and the dashboard depend on
+     them for column alignment, and turning them on globally is cheaper than
+     remembering to on every numeric cell. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* One visible focus ring, everywhere, on everything focusable by keyboard.
+   Blueprint 8 makes this non-negotiable. It is deliberately ink rather than a
+   status colour: focus is not a status. */
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* The single animated moment in the application is the report count increment
+   (blueprint 1.6). Everything else is static by construction, so this media
+   query has exactly one thing to switch off. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

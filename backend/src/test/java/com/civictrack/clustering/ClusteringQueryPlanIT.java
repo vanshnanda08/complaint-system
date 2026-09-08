@@ -25,6 +25,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>So the assertion is on the plan itself. If someone edits the index, CI
  * fails with a message naming the reason rather than the demo getting slow.
  */
+/**
+ * <b>This is the test that {@code V1__baseline.sql} refers to.</b> The comment
+ * above {@code idx_issues_cluster_candidates} in that migration names
+ * "IssueRepositoryPlanTest", which has never existed — the assertion it
+ * describes lives here.
+ *
+ * <p>The migration was not corrected, because it has already been applied.
+ * Flyway checksums an applied migration and refuses to start when the file
+ * changes, even for a comment: doing so broke every existing environment until
+ * the edit was reverted (DD-039). A stale comment in an immutable file is
+ * fixed by a pointer from the live code, which is what this is.
+ */
 class ClusteringQueryPlanIT extends IntegrationTestBase {
 
     /**

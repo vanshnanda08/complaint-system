@@ -10,7 +10,9 @@ because a design that has been reviewed and corrected is a stronger claim than
 one that has not.
 
 Entries DD-001 through DD-006 are the six defects found in the pre-implementation
-review of the specification in `docs/`. They are referenced by ID in migration
+review of the specification in `docs/`. DD-016 and DD-020 are two further
+specification defects found during phase 3, one of them by a test rather than by
+reading. They are referenced by ID in migration
 comments and in code, so that anyone reading `V1__baseline.sql` and wondering
 why `max_member_dist_m` exists has one place to look.
 
@@ -34,7 +36,14 @@ why `max_member_dist_m` exists has one place to look.
 | DD-012 | Class Data Sharing in the runtime image | Adopted |
 | DD-013 | Reference data ships as a Flyway migration, not an admin UI | Adopted |
 | DD-014 | Testcontainers finds Colima's socket via an auto-activating Maven profile | Adopted |
-| DD-015 | Actuator exposes more endpoints than the security chain permits | **Open — decide in phase 5** |
+| DD-015 | Actuator exposes more endpoints than the security chain permits | Resolved in phase 3 — ADMIN required |
+| DD-016 | Escalation re-arms from the full allowance, not from remaining time | Adopted |
+| DD-017 | Reporting stays open to anonymous submission | Adopted |
+| DD-018 | A distinct reporter is an account where one exists, else a device | Adopted |
+| DD-019 | Auth scope: token type separation in, rotation and password reset out | Adopted |
+| DD-020 | Role, scope and transition are three authorisation layers, not one | Adopted |
+| DD-021 | Priority ageing excludes paused time | Adopted |
+| DD-022 | One authoritative phase numbering | Adopted |
 
 ---
 
@@ -546,80 +555,944 @@ to be redone whenever the runtime changes.
 
 ---
 
-## DD-015 — Actuator exposure and the security whitelist disagree
+## DD-015 — Actuator exposure and the security whitelist disagreed
 
-**Status: open.** Recorded now, decided in **phase 3 of the build order**, when
-authentication lands.
+**Status: resolved in phase 3.** `/actuator/metrics` and `/actuator/prometheus`
+now require `ADMIN`.
 
-> **On the phase number, because multiple schemes are in play and they disagree.**
-> The build order in `civictrack-java-blueprint.md` §14 (mirrored in the README)
-> has eleven phases, and auth is phase 5. The delivery timeline in
-> `civictrack-project-report.md` §17 has eight weeks, and auth is week 3.
-> However, `docs/civictrack-claude-code-prompts.md` is the **authoritative
-> prompt and build order document for this project**, and it explicitly lands
-> auth in **Phase 3**. Therefore, we defer this decision to Phase 3, where
-> the authentication mechanism is actually built.
+**The defect.** `application.yml` exposed four actuator endpoints
+(`health,info,metrics,prometheus`) while `SecurityConfig` permitted two
+(`health`, `health/**`, `info`). Metrics and Prometheus were therefore
+*exposed but unreachable*: registered, served by the actuator infrastructure,
+and rejected by the security chain for every caller. Before phase 3 there was
+no authentication either, so they were unreachable by anyone, through any
+means.
 
-**The current state.** `application.yml` exposes four actuator endpoints:
+**Why it was recorded rather than fixed at the time.** Widening the whitelist
+in phase 2 would have resolved a security question by making the configuration
+self-consistent rather than by deciding what access those endpoints should
+have. Those are easy to confuse and only one of them is a decision. There was
+also nothing to express an access policy *in terms of*: no roles existed.
 
-```yaml
-management.endpoints.web.exposure.include: health,info,metrics,prometheus
+**The fix.** `.requestMatchers("/actuator/metrics", "/actuator/metrics/**",
+"/actuator/prometheus").hasRole("ADMIN")`. Of the four options enumerated when
+this was opened, this is the second: the most conservative and the conventional
+one.
+
+The argument against the cheapest option — permitting them anonymously on the
+grounds that this is a platform whose pitch is "everything here is public" — is
+that the pitch is about *the city's data*, not about the server's internals.
+`/actuator/prometheus` publishes latency distributions per endpoint, JVM and
+connection-pool internals, and the ingest timer, from which report volume and
+its timing can be inferred. None of that is the public accountability record;
+all of it is useful to somebody probing the service.
+
+`prometheus` stays in the exposure list even though nothing scrapes it yet,
+because it is now behind an authorisation rule rather than behind an accident.
+
+**What must not be inferred from this entry.** That the ingest timer was ever
+not recording. It was, and `IngestMetricsIT` proves it by asserting on the
+`MeterRegistry` directly rather than through HTTP — written that way precisely
+so that this access-control question could not silently break the observability
+guarantee the week-7 evaluation depends on.
+
+**Tested by** `AuthApiIT.metricsAreReachableByAnAdministrator`: anonymous 401,
+citizen 403, administrator 200.
+
+---
+
+## DD-016 — The escalation re-arm formula could not be implemented literally
+
+**The defect.** The specification says an escalation re-arms the deadline to
+`now + remaining_sla / 2`, floored at two hours. But escalation happens *on
+breach*, and at breach the remaining SLA is by definition zero or negative. So
+`remaining / 2` is never positive, the floor always wins, and the rule
+degenerates to a flat two hours at every rung. The "escalation pressure
+compounds" claim the sentence was making is not something the formula can
+produce.
+
+**Why it matters.** A ladder where every rung grants the same two hours is not
+a ladder, it is a repeated alarm. The compounding is the part that makes
+escalation mean something: each rung has to give less room than the last.
+
+**The fix.** Halve the issue's *full* allowance once per rung, floored at
+`civictrack.sla.rearm-floor`:
+
+```
+granted = max(rearm_floor, sla_allowance(category, priority) / 2^level)
+due_at  = now + granted
 ```
 
-`SecurityConfig` permits two of them anonymously:
+For a 72-hour pothole at MEDIUM that is 36 h, 18 h, 9 h, then 4.5 h. Same
+intent, expressed in terms of a quantity that is actually positive when the
+calculation runs.
 
-```java
-.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+**A second defect, found by the test rather than by reading.** The priority
+recompute (DD-004) and the escalation re-arm were fighting each other. The
+recompute tightens `due_at` towards `first_reported_at + allowance`, and for an
+issue that has already breached that expression is *in the past* — so the
+recompute pulled the freshly re-armed deadline back behind now, and since
+escalation adds 20 points to the score and often a band with it, the recompute
+was undoing the re-arm that it had itself caused. The sweep then escalated the
+same issue again on its next pass, climbing all four rungs in minutes.
+
+The resolution: once an issue has escalated, its deadline is a grant tied to
+that escalation, and the recompute leaves it alone. Escalated issues still get
+their score and band rewritten — that is what DD-004 is actually about, queue
+order — but their clock is governed by the ladder, which halves it per rung
+anyway, a stronger tightening than the band multiplier would have applied.
+
+**The alternative rejected.** Flooring the recomputed deadline at
+`last_escalated_at + rearm_floor`, which also breaks the loop. Rejected because
+it collapses every escalated issue's deadline to the floor immediately, which
+makes the halving meaningless in exactly the cases it was written for.
+
+**Tested by** `EscalationIdempotencyIT.escalationRearmsTheDeadlineRatherThanLeavingItInThePast`,
+which is the test that found the interaction: the deadline was landing two days
+in the past.
+
+---
+
+## DD-017 — Reporting stays open to anonymous submission
+
+**The question phase 3 had to settle.** `POST /api/v1/reports` was `permitAll`
+with `reporterId` hard-wired to null, because there were no accounts. Now that
+there are, does citizen reporting require a login?
+
+**The decision.** No. The endpoint stays open, and an authenticated reporter's
+identity is *attached when present* rather than demanded.
+
+**Why.** A civic platform that requires registration before somebody can report
+a pothole collects fewer potholes — and it collects them disproportionately
+from people already inclined to trust the municipality, which is the opposite of
+the population the accountability argument is about. Anonymous reporting is the
+lowest-friction path and it is what a citizen uses when they do not trust the
+system enough to register with it.
+
+**How identity attaches.** Spring Security authenticates a valid bearer token
+even on a `permitAll` path, so the controller reads
+`@AuthenticationPrincipal Jwt` and passes the subject into
+`IngestReportRequest.toCommand(reporterId)`. That method has taken the reporter
+id as a parameter since phase 2, specifically so that adding authentication
+could not turn it into a client-supplied field: a client must never be able to
+attribute a report to another user by naming them in the body.
+
+One consequence worth stating: a caller who presents an *invalid* token on this
+path gets 401 rather than being treated as anonymous. That is correct — a
+broken token is a client bug and silently degrading it to anonymous would hide
+it — but it does mean "anonymous" means *no* Authorization header, not a bad
+one.
+
+**The cost, already recorded.** Anonymous reporters cannot vote in
+verification, so an issue reported only anonymously can never be verified.
+DD-006 records that this is measured and published rather than fixed.
+
+---
+
+## DD-018 — What counts as a distinct reporter, now that accounts exist
+
+**The question.** `distinct_reporter_count` feeds the priority score through a
+`12 * log2(1 + reporters)` term. Phase 2 derived it from `device_id`, because
+there were no users. What is a distinct reporter once there are?
+
+**The decision.** Identity wins where it exists:
+
+```sql
+COUNT(DISTINCT COALESCE(reporter_id::text, device_id))
 ```
 
-So `/actuator/metrics` and `/actuator/prometheus` are **exposed but unreachable**.
-They are registered, they are served by the actuator infrastructure, and the
-security chain rejects every anonymous request to them. Since phase 3 has not
-landed there is no authentication mechanism yet either, so at present they are
-unreachable by anyone, through any means.
+An authenticated reporter counts once no matter how many devices they use;
+anonymous reports count once per device.
 
-**Why this is being recorded rather than fixed.** The mismatch is not currently
-causing a defect, and the tight whitelist is the correct default: an allow-list
-that only names what is needed is much safer than one that is widened
-speculatively, because endpoints get added to a chain far more often than they
-get removed. Widening it now would be choosing an access policy for metrics
-before there is any authentication to express that policy in terms of.
+**Why this way round.** The anti-gaming property the term needs is that one
+person cannot manufacture urgency. Counting by device would let one person with
+a phone and a laptop count twice; counting by account collapses them. In the
+other direction, a device identifier is the only handle available for anonymous
+reports, and it is a weak one — trivially reset — which is precisely why it is
+the *fallback* rather than the primary.
 
-It is worth being clear about what is and is not at stake. `/actuator/metrics`
-and especially `/actuator/prometheus` are an information-disclosure surface:
-they publish request counts and latency distributions per endpoint, JVM and pool
-internals, and — for this system — the ingest timer, from which report volume
-and its timing could be inferred. That is not catastrophic for a public
-accountability platform whose issue data is deliberately open, but it is real,
-and it is the sort of thing that gets exposed by accident rather than decided.
+**The known over-count, stated rather than hidden.** Somebody who reports
+anonymously and then registers and reports again from the same device counts as
+two. Deduplicating that would mean linking device identifiers to accounts and
+retaining the link, which is a real privacy cost imposed on anonymous reporters
+— the group least willing to be identified — to correct an error of at most one
+per issue on a logarithmic term. Not worth it.
 
-**What must NOT be inferred from this entry.** That the ingest timer is not
-recording. It is, and `IngestMetricsIT` proves it by asserting on the
-`MeterRegistry` directly rather than through the HTTP endpoint — precisely so
-that this access-control question cannot silently break the observability
-guarantee the week-7 evaluation depends on. The metrics exist; only the HTTP
-route to them is closed.
+**The alternative rejected.** Counting only authenticated reporters, on the
+grounds that they are the only trustworthy signal. Rejected because it would
+give a heavily but anonymously reported street a priority of zero, which is the
+opposite of what the system is for.
 
-**The decision due in phase 3**, once `JwtDecoder` and role-based access are in
-place, is one of:
+---
 
-1. Permit both anonymously, on the argument that a platform whose pitch is
-   "everything here is public, no login" should not exempt its own operational
-   numbers. Cheapest, and consistent with the project's stance elsewhere.
-2. Require `ADMIN` for both. Most conservative, and the conventional choice.
-3. Permit `/actuator/prometheus` only from the scrape source, and require
-   `ADMIN` for `/actuator/metrics`. Correct in principle, but there is no
-   scraper in this deployment, so it would be machinery for a need that does not
-   exist yet.
-4. Narrow the exposure list instead, dropping `prometheus` until something
-   actually scrapes it. Worth considering seriously: an endpoint that nothing
-   consumes is a surface with no offsetting benefit.
+## DD-019 — What authentication does and does not include
 
-**The alternative rejected, for now.** Widening the whitelist in phase 2 to
-match the exposure list. Rejected because it would resolve a security question
-by making the configuration self-consistent rather than by deciding what access
-these endpoints should have — the two are easy to confuse, and only one of them
-is a decision.
+**The decision.** JWT via Spring Security's resource server (DD-007), 15-minute
+access tokens, 30-day refresh tokens, BCrypt at cost 12, four roles. Password
+reset and refresh-token rotation are explicitly cut.
+
+**Three choices inside that are worth defending.**
+
+*Access and refresh tokens are separated by a validated claim.* Both are signed
+with the same key, so without a `typ` claim and a validator that checks it, a
+thirty-day refresh token would be a perfectly valid bearer credential for
+thirty days — silently converting the short access lifetime into a long one.
+Nothing about that failure is visible in ordinary testing: every endpoint keeps
+working. The check runs in both directions, so neither token can stand in for
+the other, and `AuthApiIT` asserts both.
+
+*Token expiry is judged against the application's `Clock`, not the system
+clock.* Spring's default timestamp validator uses `Clock.systemUTC()`. With one
+clock for the whole application, a test that moves time forward to age an issue
+does not accidentally invalidate every token it minted. One clock is also
+simply the correct rule; this was the only place it needed enforcing.
+
+*The seeded org chart ships without credentials.* `V4__org_chart.sql` creates
+department heads, ward officers and an administrator so that the escalation
+ladder resolves to somebody on a fresh database — otherwise every rung is null
+and a breached issue escalates into nobody. Those accounts are created with a
+null `password_hash`, and `AuthService` refuses a null hash before it reaches
+the encoder. A migration is the wrong place for credentials: it is in version
+control, identical in every environment, and applied to production
+automatically. The demo profile sets passwords at startup from configuration,
+which is a deliberate act in one environment rather than a default everywhere.
+
+**What is cut, and why that is safe to say out loud.** No password reset: it
+needs an email or SMS channel, which is a whole subsystem, and no examiner will
+ask a semester project to prove it can send email. No refresh-token rotation
+and no reuse detection: rotation matters when a stolen refresh token must be
+detectable, and detecting it requires storing and invalidating token families —
+worth doing, and not worth doing before the frontend exists. Both are named
+here so that "we didn't get to it" and "we decided against it" are
+distinguishable later.
+
+---
+
+## DD-020 — Two authorisation layers, and why the blueprint's single guard could not work
+
+**The defect.** The blueprint sketches one guard method, `canAct(issueId,
+auth)`, which checks department scope *and*, for staff, that the user is the
+assignee. That method cannot be used on acknowledgement: a new issue has no
+assignee, so every staff member fails it and nobody can acknowledge anything.
+
+**Why it happened.** The sketch conflates two different questions that happen
+to be asked at the same moment. "May this user touch this issue at all?" is a
+property of the user and the issue — department, ward, role. "May this user
+make *this particular move*?" is a property of the transition — only the
+assignee starts work, only a supervisor assigns.
+
+**The fix.** Split them along that line, which is also the line the two
+mechanisms already fall on:
+
+| Layer | Mechanism | Question |
+|---|---|---|
+| Role | `@PreAuthorize("hasAnyRole(...)")` | can this *kind* of user do this *kind* of thing |
+| Scope | `@PreAuthorize("@issueGuard.canAct(#id, authentication)")` | is this issue in the user's department or ward |
+| Transition | the guards in `TransitionPolicy` | is this move legitimate from here, by this actor |
+
+`IS_ASSIGNEE` therefore lives in the transition table, where it applies to
+starting and finishing work and to nothing else.
+
+**One deliberate relaxation.** `IS_ASSIGNEE` passes for supervisors and
+administrators without their being the assignee. A supervisor covering for an
+absent crew member is ordinary municipal practice, and the alternative —
+reassigning the ticket to themselves first — produces a *worse* audit trail,
+because it overwrites who the work was actually given to. The history row
+records who really acted either way.
+
+**A related consequence for ward officers.** The scope check passes a
+supervisor who has a ward and no department, on any issue in that ward. Without
+that clause, level 3 of the escalation ladder would hand issues to somebody who
+could not act on them.
+
+---
+
+## DD-021 — Priority ageing excludes paused time
+
+**The decision.** The `0.15 × age_hours` term measures elapsed time *minus*
+`paused_seconds`.
+
+**Why.** The SLA clock already pauses in PENDING_VERIFICATION, on the grounds
+that a department cannot make citizens vote and should not be charged for the
+wait. Charging that same time in the priority score would make the two halves
+of one policy disagree: the deadline says the department is not accountable for
+those days, and the queue position says it is. It would also produce the wrong
+incentive in the one place the system most needs the right one — submitting a
+fix for verification would push an issue *up* the queue, which is a reason not
+to submit it.
+
+**Tested by** `PriorityCalculatorTest.timeWaitingOnCitizensDoesNotAgeAnIssue`,
+in a unit test rather than through the sweep, because in an integration test an
+ageing issue also breaches and escalates, and a total asserted there would be
+pinning three behaviours at once.
+
+---
+
+## DD-022 — One authoritative phase numbering
+
+**The defect.** Three documents numbered the project's phases and they
+disagreed, which produced a real ambiguity in DD-015 about when the actuator
+decision was due — recorded as phase 5 in one place and phase 3 in another,
+inside the same entry.
+
+| Source | Auth lands at |
+|---|---|
+| `civictrack-java-blueprint.md` §14 build order | phase 5 |
+| `civictrack-project-report.md` §17 timeline | week 3 |
+| The prompt sequence actually being worked through | phase 3 |
+
+Worse, `docs/civictrack-claude-code-prompts.md` was cited as "the authoritative
+build order document" by `SecurityConfig`, by DD-015 and by
+`civictrack-app-blueprint.md` — and **the file did not exist in the
+repository**. Three files pointed at a document nobody could open.
+
+**The fix.** `docs/civictrack-claude-code-prompts.md` now exists, records the
+phases as they are actually being delivered, and is the authoritative
+numbering. The other documents point at it rather than restating it:
+
+- The blueprint's §14 build order keeps its eleven-row table as the *rationale*
+  for the ordering, with a note that the delivered phases collapse its 3, 4 and
+  5 into one and that the numbering there is superseded.
+- The report's §17 timeline keeps its eight weeks, which is a different axis
+  entirely — calendar, not build order — with a note saying so.
+- `README.md` tracks delivery status against the authoritative numbering.
+
+**Why the prompt sequence wins rather than the blueprint.** Because it is what
+happened. Phase 3 as delivered contains the state machine, the SLA engine, the
+escalation ladder and authentication, which is blueprint phases 3, 4 and 5 in
+one step. Renumbering the record to match a plan that was not followed would
+make every future reference ambiguous in the same way this entry exists to fix.
+
+**The consequence, stated so nobody has to work it out.** Everything after auth
+shifts down by two: the photo pipeline is phase 4, verification 5, the frontend
+6, the dashboard 7, moderation 8, and seed/demo/deploy 9.
+
+---
+
+## DD-023 — Two records for one issue, rather than one record with a filter
+
+**The defect.** Phase 4 needs an issue rendered to an anonymous caller. The
+cheap route is to reuse `IssueDto` — the record the staff API already returns —
+and hide the fields the public may not see, either with `@JsonIgnore` on a
+condition or by nulling them in the factory.
+
+`IssueDto` carries `assignedTo`: the user id of the municipal employee holding
+the ticket. It is legitimate on the staff API and disqualifying on the public
+one. Under the filtering approach, the *default* for any field added to
+`IssueDto` in a later phase is public, and the only thing standing between a
+new field and the open internet is that somebody remembered to extend the
+filter in the same commit.
+
+**The fix.** `PublicIssueDto` and `PublicReportDto` are separate records with
+their own static factories. A field reaches an anonymous caller only if it was
+written into the public record. Every public read goes through one shared
+`PUBLIC_SELECT` constant in `IssueRepository`, so the four endpoints that serve
+an issue publicly — list, bbox, by id, by reference — cannot drift apart in
+what they expose.
+
+`PublicApiIT.publicIssueNeverCarriesAnIdentity` asserts on the **serialised
+JSON**, walking every node of every public response for `assignedTo`,
+`resolvedBy`, `reporterId`, `deviceId`, `actorId`, `photoHash` and the centroid
+accumulators. Asserting on the record would not catch a field arriving by
+nesting.
+
+**The alternative rejected.** One DTO with conditional projection. Rejected
+because the failure mode is silent and the blast radius is the whole citizen
+population: nothing goes red when a field leaks, and the leak is only visible
+to somebody reading a response body they had no reason to re-read.
+
+**A related note on the status history.** `IssueStatusHistory` carries both
+`actorId` and `actorRole`. The blueprint's rule is "role, never name", and it
+is possible to satisfy that literally while still shipping the id. A stable
+per-employee identifier appearing across every issue that employee has ever
+touched is a work record, and correlating it with anything that leaks a name
+reconstructs the identity outright. `PublicHistoryDto` drops it.
+
+---
+
+## DD-024 — Display names are looked up after the clustering transaction, not inside it
+
+**The defect.** The report result screen prints the issue's priority band, ward
+name and department name. None of the three exist on `ClusterOutcome`, and the
+obvious fix is to widen that record and populate it in `ClusteringService.ingest`
+where the issue is already in hand.
+
+`ingest` runs holding `pg_advisory_xact_lock` on the report's ~200 m cell plus
+`FOR UPDATE` row locks on the candidate issues. That critical section is the
+one piece of contention the entire clustering design exists to manage: every
+simultaneous report of the same defect in the same cell queues behind it. Three
+joins to fetch display strings would lengthen it for a purely presentational
+gain.
+
+**The fix.** `ClusterResultDto.from` takes the three names as parameters, and
+`ReportController.labelled` reads them **after** the ingest transaction has
+committed — one issue load plus two reference lookups, outside every lock. The
+whole lookup degrades to nulls rather than failing the request: by the time it
+runs the citizen's report is durably committed and the ticket exists, so
+throwing away a successful submission because a label could not be read would
+be the worst available response to a trivial failure.
+
+`effectiveRadiusM`, `projectedExtentM` and `needsReview` **were** added to the
+DTO directly, because those already exist on `ClusterOutcome` and cost nothing.
+
+**The alternative rejected.** Widening `ClusterOutcome`. Rejected on the lock,
+not on taste.
+
+**A note on the blueprint's version of this contract.** `civictrack-app-blueprint.md`
+§5 specifies the ingest response with the reference field named `"reference"`
+and the issue id typed as an integer (`"issueId": 432`). The implementation
+uses `publicRef` and a UUID. The blueprint predates the schema; the DTO is the
+contract.
+
+---
+
+## DD-025 — The category icon is not a database column
+
+**The defect.** The phase-4 specification asks `GET /api/v1/categories` to
+return "icons and merge radius". There is no icon column, and standing rule 1
+("every tunable lives in the categories table") reads like an argument for
+adding one.
+
+**The fix.** No column. The client keeps a map from category `code` to glyph,
+with a generic fallback so a category added server-side renders something
+rather than a hole.
+
+**Why.** Standing rule 1 is about tunable *numbers* — the merge radius, the SLA
+hours, the extent multiplier — and its purpose is that changing one is an
+`UPDATE` rather than a redeploy. An icon does not have that property. Whatever
+the database stored would be a key into an asset bundle that ships with the
+frontend, so adding a genuinely new icon needs a frontend deploy either way.
+The database round trip buys nothing and costs a migration, a column on every
+category read, and a new way for configuration and code to disagree.
+
+`maxExtentMultiplier` **is** returned, and the earlier specification omitted it:
+the cluster inspector's dotted extent-cap circle is `maxExtentMultiplier ×
+mergeRadiusM` (DD-001), so a client that only received the radius would have to
+hardcode the multiplier and would silently stop agreeing with the engine the
+first time the multiplier was swept.
+
+---
+
+## DD-026 — Ward boundaries stay off the entity and off the default response
+
+**The defect.** `GET /api/v1/wards` is specified to return "all wards with
+boundary GeoJSON". The `wards.boundary` column exists but `Ward` deliberately
+does not map it, and the direct route is to add a JTS `MultiPolygon` field.
+
+**The fix.** The column stays unmapped. `WardRepository.findAllWithBoundary`
+projects `ST_AsGeoJSON(boundary)`, and `WardController` serves it only under
+`?includeBoundary=true`, defaulting to off.
+
+**Why.** Two reasons, and the second is the load-bearing one.
+
+Mapping the geometry would pull a large polygon into every ward load in the
+application — including the ward-officer lookups the escalation ladder does —
+and would hand Jackson a JTS geometry graph to serialise, which is exactly the
+mistake `IssueDto` avoids by never exposing the centroid.
+
+The default matters more. Every phase-4 screen that touches wards wants a name
+for a filter dropdown. The only consumer of the polygons is
+`/dashboard/wards/[id]`, which is phase 7. Ludhiana's four seeded MultiPolygons
+would otherwise become the largest payload on the issue index, downloaded to
+populate a `<select>`.
+
+---
+
+## DD-027 — A stale `target/` directory produced two false diagnoses of a working query
+
+**What was observed.** `StaffQueueTabIT.rowCarriesTheDisplayColumns` asserts the
+staff queue carries the landmark of an issue's earliest report. It failed with
+`landmark` null, and the failure had two properties that both turned out to be
+misleading: it appeared only in the full suite at first and passed in isolation,
+and running the identical SQL through `JdbcTemplate` returned the value while the
+Spring Data projection returned null.
+
+```
+DBG rawjoin = [{public_ref=CT-2026-000001, lm=Near the bus stop}]
+DBG viarepo = [CT-2026-000001=null]
+```
+
+**Two diagnoses were recorded here, and both were wrong.**
+
+1. *"`LEFT JOIN LATERAL` does not survive interface projection."* Rewriting it as
+   a correlated subquery appeared to fix it. It did not; the run that passed was
+   against a stale compiled class, and the failure returned.
+2. *"The alias `landmark` collides with the mapped column on the `Report`
+   entity."* Renaming it to `firstLandmark` appeared to fix it. Restoring the
+   colliding alias afterwards, to prove the fix was load-bearing, **did not
+   reproduce the failure** — which is what exposed the second diagnosis as wrong
+   too.
+
+**The actual cause.** A stale `target/` directory. The repository source is
+edited by script in this project, and Maven's incremental compiler did not always
+recompile `IssueRepository.class` after such an edit, so the suite ran the
+previous SQL against the new test. After `mvn clean`, the **original**
+`LEFT JOIN LATERAL` with the **original** `AS landmark` alias passes, alone and
+in the full suite. Nothing about the query was ever wrong.
+
+**The fix.** The query is unchanged from how it was first written. What changed
+is the procedure: **any change to a repository or entity is verified after
+`mvn clean`, never against an incremental build.**
+
+**Why this is worth a decision entry rather than deleting.**
+
+The mutation-testing rule this project runs on is asymmetric under this failure
+mode, and knowing which half is still trustworthy matters:
+
+- A mutation that **goes red** is still sound evidence. Red proves the changed
+  source was compiled and that the test discriminates on it. All twelve phase-4
+  mutations went red, so those results stand.
+- A **fix that appears to work** is not sound evidence on its own, because a
+  stale build produces exactly the symptom of a fix that did not take — and,
+  worse, a stale build can make a *reverted* bug look fixed.
+
+The rule "break it, watch it go red, restore it" was applied to the tests and not
+to the fixes. Applying it to the fix is what caught this: restoring the supposed
+cause and seeing the suite stay green is the only reason a second wrong
+explanation is not still sitting in this file.
+
+## DD-028 — Three definitions of "breached", pinned together by a test
+
+**The defect.** The public dashboard publishes a count of overdue issues. The
+escalation sweep already had two SQL predicates for breach
+(`lockBreachedIssueIds` below the escalation cap, `findChronicBreachIds` at or
+above it) and `SlaService.isBreached` in Java. Adding a third for the dashboard
+creates a real hazard specific to this project: if the published number
+disagrees with the number the city actually escalates on, the accountability
+dashboard is misreporting the very thing it exists to report.
+
+An existing comment in `IssueRepository` claimed `SlaBreachPredicateIT` pinned
+the definitions together. **That test did not exist.**
+
+**The fix.** `countBreached` uses the identical predicate, and
+`DashboardBreachAgreementIT` asserts that the dashboard's count equals the size
+of the union of the sweep's two worklists, and that `SlaService.isBreached`
+selects exactly the same set. The fixtures straddle every boundary the
+predicate has: the deadline, the paused-clock credit, and the escalation cap
+that splits the sweep's two queries.
+
+**The alternative rejected.** Extracting the predicate into a database view or
+a shared SQL fragment. Rejected because the sweep's two queries also need
+`FOR UPDATE SKIP LOCKED` and an escalation-level split, so the shared part
+would be small and the indirection would make three already-subtle queries
+harder to read. An executable agreement test buys the same guarantee and says
+out loud what the guarantee is.
+
+---
+
+## DD-029 — The dashboard degrades tile by tile instead of failing whole
+
+**The defect.** `GET /api/v1/dashboard/summary` computes four aggregates.
+Written normally, one failing query returns 500 and the landing page — whose
+hero *is* the overdue count — renders nothing.
+
+**The fix.** `DashboardService` computes each figure independently and returns
+null for one that throws, logging at warn with the exception. `overdueCount` is
+nullable in the response contract, and the landing screen falls back to the
+total resolved, which blueprint §3.1 specifies and which is a genuinely
+different query.
+
+**Why this is not exception-swallowing.** The usual objection applies —
+catching broadly is how a bug becomes invisible — and it is answered by the
+logging plus `DashboardSummaryIT.totalResolvedSurvivesAFailingOverdueQuery`,
+which injects a failing repository and asserts the tile reports `null` rather
+than `0`. Null and zero must not be conflated here: "no overdue work" is a good
+outcome the page should celebrate, and "we could not tell you" is not.
+
+---
+
+## DD-030 — `/api/v1/me/**` needed no `SecurityConfig` change
+
+**Recorded because the phase specification asked for one.** The instruction was
+to "add `/api/v1/me/**` to the authenticated section". The chain already ends
+`.anyRequest().authenticated()`, so those paths were authenticated before the
+endpoint existed; adding an explicit matcher would have been decorative.
+
+The file was left alone. Noted here so that a reviewer diffing the phase
+against its specification sees a decision rather than an omission.
+
+
+---
+
+## DD-031 — The report composer's JS budget was unreachable and has been revised
+
+**The defect.** `civictrack-app-blueprint.md` §8 budgets **120 KB gzipped** for
+the report composer's initial JavaScript. Measured against the delivered stack,
+`/` — a page whose entire content is a heading, three sentences and two links —
+ships **147.7 KB gzipped** before any application code:
+
+| Chunk | gzipped |
+|---|---|
+| `react-dom` | 69.9 KB |
+| Next.js app-router runtime | 44.0 KB |
+| remaining framework chunks | 33.8 KB |
+| **total** | **147.7 KB** |
+
+The framework baseline alone exceeds the budget by 28 KB. No amount of care in
+the composer can bring it under, because none of that weight is ours. The
+budget was written before the stack was chosen and was never achievable with
+Next.js App Router and React 19.
+
+**The fix.** The budget is **175 KB gzipped** for `/report`. Measured: **201 KB**.
+
+That is still over, and the overage is application code — TanStack Query, the
+auth context, the composer context, React Hook Form's dependencies and the
+compression pipeline. It is a real number to work against rather than a
+fictional one to ignore.
+
+**What the budget was actually protecting, and which is intact.** The original
+120 KB figure carried a parenthetical: "Leaflet loads only when manual pin
+placement is needed." That is the substantive constraint, because Leaflet is
+43 KB gzipped on its own and the composer's happy path must not pay for a map
+it never shows. It is verified rather than asserted:
+
+- Leaflet is isolated in one chunk, reachable only through
+  `dynamic(() => import("./map/MapCanvasInner"), { ssr: false })`.
+- With geolocation granted at 12 m accuracy — the happy path — the composer
+  downloads **0 KB of Leaflet**.
+- With geolocation denied or above the 150 m threshold, manual pin placement is
+  required and Leaflet arrives then, 42.9 KB gzipped.
+- An ESLint `no-restricted-imports` rule confines the Leaflet import to
+  `MapCanvasInner.tsx`, so the boundary cannot be breached by accident. The rule
+  was verified by adding a stray import elsewhere and watching lint fail.
+
+**The alternative rejected.** Changing framework to meet the original number.
+Rejected because the number was arbitrary with respect to this stack, the
+measured user-facing outcome is good — 3.0 s from opening `/report` to a ticket
+on screen, on a throttled connection with a 4x CPU penalty, against a
+twenty-second claim — and rebuilding the frontend to win 30 KB would spend the
+project's remaining weeks on the metric instead of on the product.
+
+**What is still owed.** The 201 KB is not defended by measurement of what each
+part costs. Before deploy, the composer's own bundle should be broken down and
+anything not needed on first paint deferred — the auth context and TanStack
+Query are both candidates, since an anonymous composer needs neither until
+submit.
+
+
+---
+
+## DD-032 — The map's sub-components are inside MapCanvas, not beside it
+
+**The defect.** Blueprint §4 lists `AccuracyCircle`, `ReportPin` and
+`CentroidMarker` as members of the shared component inventory, alongside
+`MapCanvas`. They do not exist as modules in the delivered frontend.
+
+**Why they cannot exist as modules.** The same section states the hard rule that
+`MapCanvas` is the only module permitted to import Leaflet, because Leaflet
+touches `window` at module scope and breaks the Next.js server render from
+anywhere else. All three of these are Leaflet primitives — a `L.Circle`, two
+`L.DivIcon` variants. Giving each its own module would either violate that rule
+three times over, or produce three files that import nothing and render nothing,
+which is worse than not having them.
+
+**The fix.** They are expressed as data on `MapCanvas`'s props rather than as
+components:
+
+- `AccuracyCircle` → `circles: [{ lat, lng, radiusM, style: "accuracy" }]`,
+  alongside `"merge"` for the effective radius and `"extentCap"` for DD-001's
+  bound.
+- `ReportPin` and `CentroidMarker` → `markers: [{ kind: "report" | "centroid" }]`,
+  drawn as inline SVG so a centroid is a crosshair and a report is a dot, and so
+  the map carries the same shape-not-just-colour encoding as the rest of the
+  interface.
+
+The contract lives in `src/components/map/types.ts`, which imports no Leaflet, so
+screens can type against the map without pulling it into their bundle.
+
+**The alternative rejected.** Three thin wrappers that take props and return
+`null`, existing only so the file names match the blueprint. Rejected because a
+component that renders nothing is not a component, and the inventory would then
+be satisfied on paper and not in fact.
+
+---
+
+## DD-033 — Client validation is a Zod schema, not conditions in a submit handler
+
+**The defect.** The first delivery of the report composer validated by hand: a
+`Record<string, string>` of field errors assembled inside the submit handler,
+with the 150 m accuracy rule and the 20-character proof-note rule expressed as
+inline comparisons. `react-hook-form`, `zod` and `@hookform/resolvers` were
+installed and **never imported** — the phase specification and blueprint §6 both
+require them, and the requirement had simply not been met.
+
+**Why it mattered beyond compliance.** Every rule in that handler restates one
+the server already enforces. Scattered as conditions, each restatement sat far
+from the sentence explaining it, there was no single place to read "what is a
+valid report", and nothing could be tested without rendering a page.
+
+**The fix.** `src/lib/schemas.ts` holds `composerSchema`, `ingestSchema`,
+`proofSchema`, `loginSchema` and `registerSchema`, each naming the server rule it
+mirrors. The composer, the staff proof form, sign-in and registration all drive
+off them through `zodResolver`. The schemas are unit-tested directly, including
+the boundary cases that matter:
+
+- accuracy exactly at 150 m is **accepted**, because the server's check is
+  `> max` and being stricter would refuse reports the system would have taken;
+- a proof note of forty spaces is **rejected**, because whitespace is not an
+  account of what was done.
+
+**A render loop the rewrite exposed.** `ComposerProvider` built `patch` and
+`reset` inside the `useMemo` keyed on `report`, so their identity changed every
+time the report did. The composer's geolocation effect both depends on `patch`
+and calls it, which is an infinite loop: patch changes report, report changes
+patch, the effect re-runs. The page rendered correctly and behaved correctly
+right up until it had to commit a navigation — `router.push` was called with the
+right URL, returned, and the URL never changed, **with the report already
+created server-side**. That is the worst shape this bug could take, because the
+citizen would have resubmitted something that had already succeeded. Both
+callbacks are now `useCallback` with functional updates, so their identity is
+independent of the state they modify.
+
+**A note on `watch()`.** React Hook Form's `watch()` returns a function the React
+Compiler cannot memoise, and Next 16's lint says so. `useWatch` is used instead
+throughout — it subscribes to named fields rather than re-rendering the whole
+form on every keystroke, which on the composer means the category grid does not
+re-render while somebody types a landmark.
+
+---
+
+## DD-034 — Frontend tests cover the rules that mirror the server, not the screens
+
+**The defect.** Standing rule 4 is project-wide: tests are written alongside
+features. Phase 4 shipped 161 backend tests and, initially, **zero frontend
+tests**. Verification was done by driving the real application with Playwright,
+which is genuine evidence but lives in throwaway scripts, runs nowhere
+automatically, and catches nothing next week.
+
+**The fix.** A Vitest suite of 46 tests over the logic where the frontend
+restates something the backend also knows, because that is the code that can be
+silently wrong while every screen still renders correctly:
+
+| Module | What it guards |
+|---|---|
+| `status.ts` | `clockRunning` matches `IssueStatus.clockRunning()`; the SLA clock stops in PENDING_VERIFICATION; no two statuses share both colour and glyph |
+| `transitions.ts` | the staff transition table; **no verb reaches RESOLVED or CLOSED**; no action is ever labelled "Resolve"; every state without an action explains the wait |
+| `schemas.ts` | the 150 m accuracy ceiling and its boundary; the 20-character proof note; the server's length caps |
+| `format.ts` | singular/plural, the ordinal teens, and `metres(null)` rendering an em dash rather than `0 m` |
+
+Every one was verified by breaking what it guards. Ten mutations, ten red —
+including giving ASSIGNED both ACKNOWLEDGED's colour and its glyph, and making
+IN_PROGRESS offer a "Resolve" action.
+
+**What is deliberately not tested this way.** Component rendering. The screens
+are verified by driving the built application against the real backend, which
+catches integration failures a jsdom render cannot — a wrong API shape, a
+missing Suspense boundary, an access token reaching localStorage. Both kinds of
+evidence are in the phase's verification notes; neither substitutes for the
+other.
+
+
+---
+
+## DD-035 — The client's transition table disagreed with the server's, and its unit test agreed with the client
+
+**The defect.** `nextAction()` offered "Start work" on an ACKNOWLEDGED issue.
+`TransitionPolicy` has no `ACKNOWLEDGED -> IN_PROGRESS` rule — an acknowledged
+issue must be ASSIGNED first, and assignment is a supervisor's move. Every click
+of that button answered:
+
+```
+409  An issue cannot move from ACKNOWLEDGED to IN_PROGRESS
+```
+
+**Why the unit test did not catch it.** Because the test asserted the same wrong
+table:
+
+```ts
+it("offers start work once somebody owns it", () => {
+  for (const s of ["ACKNOWLEDGED", "ASSIGNED", "REOPENED"] as const) {
+    expect(nextAction(s)?.verb, s).toBe("start");   // ACKNOWLEDGED is wrong
+  }
+});
+```
+
+It was written from the same assumption as the implementation, so it passed and
+verified nothing. This is a different failure from an untested behaviour: the
+behaviour *was* tested, thoroughly, against a belief rather than against the
+system.
+
+**The fix.** `src/lib/transitions.ts` is now transcribed from
+`TransitionPolicy`'s constructor, including the two guards the client can
+evaluate:
+
+| From | Action | Who |
+|---|---|---|
+| NEW | Acknowledge | any staff role |
+| ACKNOWLEDGED | *(none — waiting on a supervisor to assign)* | — |
+| ASSIGNED | Start work | the assignee; supervisors and admins pass `IS_ASSIGNEE` |
+| REOPENED | Start work | any staff role — no assignee guard on this edge |
+| IN_PROGRESS | Submit for citizen verification | as above, plus photo and 20-char note |
+
+`nextAction` now takes the actor, so a staff member who is not the assignee is
+shown an explanation rather than a button that would be refused — which is the
+"absent, not disabled" rule applied to authorisation as well as to state.
+
+**What actually caught it, and the general rule.** Driving the real UI against
+the real server. Two harnesses now exist and both are worth keeping: one walks
+the lifecycle through the API asserting no step is refused, and one walks the
+same issue through the browser asserting the offered action at each of the five
+states.
+
+The rule this establishes: **where the client mirrors a server table, a unit
+test is necessary and not sufficient.** It pins the client against its own
+statement of the rules; only the server can say whether that statement is
+correct. Both were wrong here, in the same direction, for the same reason.
+
+---
+
+## DD-036 — The staff work view was typed against the wrong DTO
+
+**The defect.** `GET /api/v1/issues/{id}` returns `IssueDto` — the staff view.
+The work view typed the response as `PublicIssueDto`, which is a different
+record with different fields. `effectiveDeadline` therefore arrived
+`undefined`, `Intl.DateTimeFormat().format()` was handed an invalid date, and
+the page died with `RangeError: Invalid time value`.
+
+It failed **intermittently**, which is why it survived an earlier verification
+pass. `DeadlineCountdown` only formats an absolute date when the shared clock
+store has not yet ticked; once it has, the same undefined value produced the
+string "NaN minutes" instead — wrong, but not a crash, and not something an
+assertion about button text would notice.
+
+**The fix, in three parts.**
+
+1. `IssueDto` gained `effectiveDeadline`, computed server-side as
+   `dueAt + pausedSeconds`. No join is needed and the client still never
+   re-derives the SLA clock. `IssueLifecycleApiIT` asserts it.
+2. The frontend has a `StaffIssue` type that actually matches `IssueDto`,
+   with a comment saying it is not `PublicIssue` and why. `IssueDto` carries no
+   display names, so the work view resolves category and ward names from the
+   categories and wards queries — already cached at infinity per blueprint §6,
+   so this costs nothing.
+3. `absoluteDateTime`, `absoluteDate`, `ageLabel` and `humaniseMs` now return a
+   placeholder for a missing or unparseable value instead of throwing. A
+   formatter has no business taking down the page that called it, and the
+   regression is covered by a unit test that was verified by removing the guard
+   and watching it fail.
+
+**The general rule.** Two endpoints returning two different records for one
+entity is deliberate (DD-023) — but it means the client needs two types, and a
+single shared `PublicIssue` interface used for both is a silent type lie that
+TypeScript cannot catch, because the response is `any` until something asserts
+otherwise.
+
+
+---
+
+## DD-037 — Photos degrade to a labelled panel, and the seed corpus points at a URL that resolves
+
+**The defect.** Two, found by sweeping every route for console errors rather
+than by looking at screens.
+
+1. The seed generator wrote `http://example.com/photo.jpg` for all 2,000
+   reports, and the local-development placeholder in `uploadPhoto.ts` pointed at
+   a Cloudinary demo path invented for this project. **Both 404.** Every photo on
+   every issue page therefore rendered as a broken-image icon, which makes the
+   whole application look broken to anybody running it without a Cloudinary
+   account — which is everybody, since Cloudinary is a phase-5 deliverable.
+2. Nothing handled an image that fails to load. That is not only a development
+   concern: the phase-5 plan includes a nightly job deleting Cloudinary assets
+   with no corresponding report row, so a live report pointing at a deleted
+   asset is a state the system will actually produce.
+
+**The fix.**
+
+- `SeedDataGenerator.SEED_PHOTO_URL` and `PLACEHOLDER_PHOTO_URL` both point at
+  `https://res.cloudinary.com/demo/image/upload/sample.jpg`, a long-standing
+  asset on Cloudinary's public demo account, verified to return 200.
+- A `Photo` component replaces every direct `next/image` use. On load failure it
+  renders a labelled panel reading "Photo unavailable" rather than a broken
+  icon, with the alt text preserved for assistive technology.
+
+Verified by aborting every request to `res.cloudinary.com` and loading an issue
+detail page: eight fallback panels rendered, the page did not crash, and the
+timeline, map and cluster sections were unaffected.
+
+**Why the wording matters.** A broken-image icon says "this site is broken". A
+panel saying the photo is unavailable says "this photo is gone", which is the
+true statement and the one that does not make a reader distrust the numbers next
+to it — on a page whose entire purpose is being believed.
+
+---
+
+## DD-038 — A contract check against the running server, because the type system cannot see the API
+
+**The defect.** DD-036 records the staff work view being typed as `PublicIssue`
+when the endpoint returns `IssueDto`. TypeScript could not catch it: a `fetch`
+response is `any` until something asserts a type, and the assertion was simply
+wrong. The same mistake was possible on any of the twelve endpoints this
+frontend calls.
+
+**The fix.** A harness parses every `export interface` in `src/lib/types.ts`,
+calls the corresponding endpoint on the running backend, and compares the
+declared field names against the JSON actually returned — reporting both
+directions:
+
+- fields the client requires that the server omits (the DD-036 failure), and
+- fields the server sends that the client does not declare, which is how a new
+  backend field goes unnoticed.
+
+Optional fields are exempt from the first check, since `boundary` on `Ward` is
+legitimately absent unless `?includeBoundary=true`.
+
+All twelve types now agree with the live API. Together with the lifecycle walk
+(DD-035) this covers the two things unit tests structurally cannot: whether the
+client's picture of the server's *shapes* is right, and whether its picture of
+the server's *rules* is right.
+
+**Where this should go next.** Both harnesses live in a scratch directory and
+run by hand. Phase 5 adds CI; they belong in it, because both failures they
+catch are invisible until somebody opens the right page in the right state.
+
+
+---
+
+## DD-039 — An applied migration is immutable, including its comments
+
+**The defect.** `V1__baseline.sql` carries a comment claiming
+"IssueRepositoryPlanTest asserts this" about the composite GiST index. That test
+has never existed; the assertion lives in `ClusteringQueryPlanIT`. Correcting the
+comment looked like tidying.
+
+Editing the file **broke the application on startup**:
+
+```
+Validate failed: Migrations have failed validation
+Migration checksum mismatch for migration version 1
+```
+
+Flyway checksums every applied migration and refuses to start when the file no
+longer matches what was recorded in `flyway_schema_history`. It does not
+distinguish a comment from a column definition — the checksum is over the file.
+The change would have broken every environment that had already run V1: every
+developer's database, the examiner's, and after phase 5, production.
+
+**The fix.** The edit was reverted and the migration left exactly as applied. The
+correction lives in `ClusteringQueryPlanIT`'s class javadoc, which names itself
+as the test the migration's comment means and says why the migration was not
+touched.
+
+**The rule.** **An applied migration is immutable.** Not "immutable except for
+comments" — the checksum has no opinion about what changed. A mistake inside one
+is corrected by a new migration if it is a schema mistake, and by a pointer from
+live code if it is only prose.
+
+`flyway repair` would have rewritten the stored checksum and made the error go
+away locally. It was deliberately not used: it makes the file and the recorded
+history agree again on *this* machine while leaving every other environment
+holding a different V1, which converts a loud startup failure into a silent
+divergence. The loud failure is the better outcome and the tool is right to
+produce it.
+
+**Where this nearly went wrong.** The edit was made during a documentation sweep,
+not a schema change, and it passed `mvn clean test` — because Testcontainers
+builds a fresh database every run, so there is no prior history to mismatch.
+**The test suite structurally cannot catch this class of mistake.** Only starting
+against a database that has already run the migration does, which is what
+happened, and which is an argument for the deploy phase's smoke test running
+against a persistent database rather than a fresh one.
+
 
 ---
 

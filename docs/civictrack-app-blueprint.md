@@ -104,7 +104,7 @@ Recorded so nobody reintroduces them: no dark mode (a second palette to keep acc
 
 ## 2. Route map
 
-27 routes. The Phase column maps to the build phases in `civictrack-claude-code-prompts.md`.
+27 routes. The Phase column maps to the build phases in `civictrack-claude-code-prompts.md`, which is the authoritative numbering (DD-022).
 
 ### Public — no authentication
 
