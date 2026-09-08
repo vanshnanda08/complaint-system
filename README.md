@@ -165,6 +165,15 @@ There is no seeded citizen login — citizens in the corpus have no password.
 Register at `/register` to exercise `/me/reports`. Reporting itself needs no
 account at all (DD-017).
 
+## Documents
+
+| | |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Component, ER, state-machine, ingest-sequence and escalation diagrams, each with the reasoning it encodes |
+| [docs/MONTH-1-STATUS.md](docs/MONTH-1-STATUS.md) | What works, what is stubbed, and what went wrong — written to be checkable |
+| [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) | Forty decisions: the defect, why it mattered, the fix, the alternative rejected |
+| [docs/civictrack-claude-code-prompts.md](docs/civictrack-claude-code-prompts.md) | Authoritative phase numbering and per-phase verification steps |
+
 ## Deployed
 
 | | |
