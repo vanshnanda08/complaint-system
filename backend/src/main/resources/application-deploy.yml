@@ -1,0 +1,32 @@
+# Deployment profile.
+#
+# Exists to solve one specific problem: the seeded staff accounts ship WITHOUT
+# a password hash (V4), deliberately, because a migration is the wrong place to
+# put credentials. Something has to set those passwords for a deployed
+# environment where an examiner needs to log in as staff -- and the only thing
+# that did was DemoAccountBootstrap, which is gated on the `demo` profile.
+#
+# Activating `demo` in a deployment would have dragged its timings along:
+# three-minute SLAs, a twenty-second sweep, a one-minute re-arm floor. Every
+# issue in the corpus would read as overdue and the public dashboard -- the
+# screen the whole project is an argument for -- would be nonsense.
+#
+# So the bootstrap now runs under `demo` OR `deploy`, and this profile states
+# the production timings explicitly rather than inheriting them. Explicitly,
+# not by omission: if these were left out they would fall back to
+# application.yml's defaults, which is the same result today but would silently
+# change the day somebody edits that file for another reason.
+civictrack:
+  sla:
+    cron: "0 */5 * * * *"
+    # Zero disables the override entirely (SlaProperties.demoOverrideActive()).
+    # This is the line that keeps a deployment honest about its own deadlines.
+    demo-override-hours: 0
+    rearm-floor: PT2H
+  verification:
+    timeout-hours: 72
+    auto-close-days: 7
+
+logging:
+  level:
+    com.civictrack: INFO

@@ -28,8 +28,21 @@ import java.util.List;
  * and it never touches a citizen account. It cannot promote anybody either --
  * the roles come from the migration, not from here.
  */
+/**
+ * Gives the seeded staff accounts a password so somebody can actually log in.
+ *
+ * <p>Runs under {@code demo} and {@code deploy}. Those two profiles differ in
+ * their timings, not in this: {@code demo} compresses SLAs so a breach happens
+ * while a slide is on screen, {@code deploy} keeps production deadlines. Both
+ * need the accounts to be usable, and neither should have to activate the
+ * other to get it.
+ *
+ * <p>It does nothing at all unless {@code civictrack.demo.staff-password} is
+ * set, and it logs a warning saying so. That is the safe default: a profile
+ * activated by accident cannot create a login.
+ */
 @Component
-@Profile("demo")
+@Profile({"demo", "deploy"})
 @RequiredArgsConstructor
 @Slf4j
 public class DemoAccountBootstrap implements ApplicationRunner {

@@ -34,7 +34,10 @@ DTO scattered across three.
 | Container runtime | any Docker-compatible | `brew install colima docker docker-compose` |
 
 There is no substitute for the container runtime: the integration tests run
-against a real `postgis/postgis:16-3.4`, and H2 has no PostGIS.
+against a real `postgis/postgis:17-3.4`, and H2 has no PostGIS. That tag
+tracks the deployed database's Postgres major (Supabase, PostgreSQL 17);
+PostGIS is one minor ahead because no `17-3.3` image is published. See
+`IntegrationTestBase` for why that gap is acceptable and what it does not cover.
 
 If you use Colima rather than Docker Desktop, start it once per boot and link
 the compose plugin once, ever:
