@@ -1,6 +1,15 @@
 civictrack:
   seed:
     enabled: true
-    corpus-size: 2000
+    # Reports, NOT issues. The generator draws a cluster size per defect --
+    # 60% singletons, 30% of 2-5, 10% of 6-15 -- so the corpus averages about
+    # 2.5 reports per issue once the clustering engine has merged them. The
+    # observed ratio at 2000 was 802 issues, and 250 therefore lands near 100.
+    #
+    # 100 is a deliberate choice, not a smaller default. The demo is read by a
+    # person scrolling a list, and 800 issues buries the handful that actually
+    # illustrate a breach, an escalation and a merge. A corpus you can read end
+    # to end is worth more here than a corpus that proves the query paginates.
+    corpus-size: 250
     random-seed: 42
     labels-file-path: "ground_truth_labels.csv"

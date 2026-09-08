@@ -2,6 +2,15 @@ import { chromium } from 'playwright';
 const APP='http://localhost:3000', API='http://localhost:8080/api/v1';
 const page1 = await (await fetch(`${API}/public/issues?limit=1`)).json();
 const iss = page1.items[0];
+
+// The staff work view is scoped by @issueGuard, so it has to be exercised with
+// an issue the signed-in user can actually see. This walk signs in as the ROADS
+// supervisor, and picking the newest issue regardless of department produced a
+// 403 that read as a failure and was in fact the guard working correctly --
+// which is the worst kind of finding for a harness to report, because a check
+// that cries wolf gets ignored. Pick an issue that department owns.
+const roads = await (await fetch(`${API}/public/issues?category=POTHOLE&limit=1`)).json();
+const staffIss = roads.items[0] ?? iss;
 const q = await (await fetch(`${API}/public/issues?status=PENDING_VERIFICATION&limit=1`)).json();
 const pend = q.items[0];
 const r = await (await fetch(`${API}/public/issues?status=RESOLVED&limit=1`)).json();
@@ -11,7 +20,7 @@ const routes = [
   '/', '/report', '/map', '/issues', '/issues?sort=priority&status=NEW', '/dashboard',
   '/login', '/register', '/me/reports', '/staff/queue', '/staff/queue?tab=unassigned',
   `/issues/${iss.id}`, `/issues/${iss.id}/cluster`, `/report/success/${iss.publicRef}`,
-  `/staff/issues/${iss.id}`, '/does-not-exist', '/issues/00000000-0000-0000-0000-000000000000',
+  `/staff/issues/${staffIss.id}`, '/does-not-exist', '/issues/00000000-0000-0000-0000-000000000000',
   '/report/success/CT-1999-000001',
 ];
 if (pend) { routes.push(`/issues/${pend.id}`, `/issues/${pend.id}/cluster`); }

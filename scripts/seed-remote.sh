@@ -33,8 +33,10 @@ if [ "${JWT_SECRET}" != "seed-run-only-not-a-real-secret-do-not-deploy-this-valu
 fi
 
 echo "Seeding ${DATABASE_URL##*//}"
-echo "This ingests 2000 reports through the real clustering engine and will"
-echo "take 10-20 minutes over the internet. Ctrl-C when it reports it is done."
+CORPUS=$(sed -n 's/^ *corpus-size: *\([0-9]*\).*/\1/p' backend/src/main/resources/application-seed.yml | head -1)
+echo "This ingests ${CORPUS:-?} reports through the real clustering engine, one"
+echo "round trip each, so expect a few minutes over the internet. Ctrl-C when"
+echo "it reports it is done."
 echo
 
 cd backend

@@ -1684,6 +1684,189 @@ four tiles looks complete, and a reader has no way to know eight are missing.
 
 ---
 
+## DD-045 — The backup was never a backup, and pg_restore said it was fine
+
+**The defect.** The restore procedure had never been run. It was four lines at
+the end of `scripts/backup.sh`: decompress the dump, pipe it into `pg_restore`
+against an empty database. Running it produces **36 errors and an empty
+database.**
+
+**The cause.** `pg_dump --schema=public` does not carry the PostGIS extension.
+An extension is a database-level object, so filtering by schema excludes it.
+The dump's `CREATE TABLE` statements then reference a type that does not exist
+in the target:
+
+```
+ERROR: type "public.geometry" does not exist
+LINE 10:     centroid public.geometry(Point,4326) NOT NULL,
+```
+
+`issues`, `reports` and `wards` all fail to create, and every constraint, index
+and `COPY` that references them fails after. The target must have PostGIS,
+`btree_gist` and `pgcrypto` created **before** the restore begins.
+
+**Why it went unnoticed for a month.** `pg_restore` **exits 0**. It reports
+`warning: errors ignored on restore: 36` and returns success. The obvious
+check — did the command succeed? — says yes about a database containing
+nothing but the four non-spatial reference tables. Anyone spot-checking
+`users` or `categories` would have found rows and concluded it worked.
+
+**The fix.** `scripts/restore.sh`, which creates the extensions first and then
+**counts rows in seven tables** rather than trusting the exit code. It carries
+a `--self-test` mode that restores the newest dump into a throwaway
+`postgis/postgis:17-3.4` container and verifies the result, so the procedure
+can be exercised without touching anything real. The wrong four-line note in
+`backup.sh` is replaced by a pointer to it and an explanation.
+
+**Verified, both directions.** The self-test passes on a real dump — 802
+issues, 2,000 reports, 4 wards, 15 users, 10 categories, 7 departments, 4
+Flyway rows. Then the `CREATE EXTENSION` step was deleted and it was run again:
+it goes red with `issues MISSING`, while `pg_restore` still calls that a
+warning and exits 0. And beyond the row counts, the application was booted
+against a restored database and served all 802 issues through
+`/api/v1/public/issues` and `/api/v1/dashboard/summary` — which also confirms
+Flyway does not object to the restored schema, a separate failure mode the row
+counts cannot see.
+
+**A note on the verification itself.** The first version counted rows with one
+`docker exec psql` per table, and it was flaky: roughly one table in seven
+came back empty on any given run, reporting four Flyway rows as missing. Each
+exec is a round trip into an amd64 image under emulation. It is one query now.
+A check that fails at random is worse than no check, because it teaches you to
+disregard it.
+
+---
+
+## DD-046 — The seed corpus is not reproducible, and the comment saying it was is now gone
+
+**The defect.** `SeedDataGenerator` documented its corpus as reproducible:
+"With a fixed random seed and a fixed clock the same corpus comes out twice,
+which is what the phase-8 evaluation needs in order to compare runs." It is
+not. Fingerprinting the corpus, reseeding, and comparing gives two different
+fingerprints and two different label files.
+
+**The cause — three of them, and `random-seed` addresses none.**
+
+- Primary keys are `@GeneratedValue(GenerationType.UUID)` and
+  `gen_random_uuid()`. Nothing seeds either, so ids and `public_ref` values
+  differ every run.
+- The clock bean is `Clock.systemUTC()`. The 90-day window slides with wall
+  time, so which issues fall the far side of "older than 14 days" changes.
+- `random-seed` governs only the `java.util.Random` draws — locations, cluster
+  sizes, report times.
+
+**Why it matters.** Phase 8 scores clustering against the ground-truth labels
+written alongside the corpus. If the corpus differs between runs, a comparison
+across runs measures the corpus rather than the clustering — which is the exact
+failure the reproducibility claim existed to prevent.
+
+**What was done.** The claim was replaced with a statement of what is actually
+true, including the measurement. Closing the gap means a fixed `Clock` bean
+under the seed profile and seeded id generation for issues and reports. Neither
+is hard, but both change how the application is wired, and doing that silently
+inside a corpus-size change is the wrong place for it. It has to happen before
+phase 8 rather than at it.
+
+**A near miss worth recording.** While fixing something else, the settle step's
+`random() < 0.6` was replaced with a hash of the issue id and described as
+making the corpus deterministic. It does not: it makes the split a
+deterministic function of a random UUID. The hash was kept — it makes the step
+idempotent for a given database, and it lets two predicates be genuinely
+independent by hashing different bytes, which per-row `random()` cannot — but
+the comment now says only that.
+
+---
+
+## DD-047 — Six of the nine statuses never appeared in the seeded corpus
+
+**The defect.** The generator ingests reports, so every issue starts NEW, and
+two `UPDATE` statements moved a share to RESOLVED and then CLOSED. Nothing
+produced ACKNOWLEDGED, ASSIGNED, IN_PROGRESS, PENDING_VERIFICATION, REJECTED or
+REOPENED. Worse, the CLOSED statement took every RESOLVED issue older than
+seven days, which at a 90-day corpus is all of them — so **RESOLVED was empty
+too.** The seeded corpus had exactly two statuses.
+
+**Why it stayed hidden.** At 2,000 reports and 800 issues there was enough to
+scroll that variety was assumed, and the statuses visible during phase-4
+verification came from `tools/table.mjs` and `tools/uiwalk.mjs` walking
+individual issues by hand — not from the corpus. Reducing the corpus to 250
+reports made it immediately obvious: a queue of nothing but NEW and CLOSED, an
+issue page whose history has one row, and a staff work view that can only ever
+offer "acknowledge". Three of the screens this project is judged on had no data
+that exercised them.
+
+**The fix.** `simulateWorkInProgress` walks a slice of the NEW issues into the
+middle of the lifecycle **through `IssueLifecycleService`** — the real service,
+the real transition table, the real guards — rather than with three more
+`UPDATE` statements. Every issue in the corpus therefore reached its status by
+a route the policy permits, and carries the `issue_status_history` rows to
+prove it. The run logs how many the transition table refused; it refused none,
+which is itself the evidence that the simulation and the policy agree.
+
+**Why not all of it through the service.** The RESOLVED and CLOSED statements
+stay direct SQL. They backdate `resolved_at` and `closed_at` by weeks and the
+service takes its timestamps from the injected clock, so it cannot express
+them. That is a real limitation of the single-writer rule here and is better
+stated than worked around.
+
+**Two bugs found while doing it.**
+
+- The two settle predicates hashed **the same bytes of the same key**, so every
+  issue that passed `< 60` also passed `< 65` and RESOLVED stayed empty — the
+  bug the split was added to fix, reintroduced by the fix. They now hash
+  different slices of the digest.
+- The history rows were first backdated by an arbitrary per-row offset, which
+  can land ACKNOWLEDGED after IN_PROGRESS. The issue page renders history in
+  timestamp order, so the audit trail would have read as though work started
+  before anyone looked at the issue. It is `row_number()` over the row's own id
+  now, which preserves the order the transitions were actually written in.
+
+**Result.** 110 issues from 250 reports, across **eight** of the nine statuses:
+NEW 24, RESOLVED 26, CLOSED 23, ACKNOWLEDGED 10, ASSIGNED 9, IN_PROGRESS 9,
+PENDING_VERIFICATION 6, REJECTED 3.
+
+**REOPENED is still absent, deliberately.** It is reachable only from
+PENDING_VERIFICATION under `REJECTIONS_PREVAIL` or from RESOLVED under
+`RECURRENCE_IN_WINDOW` — both need citizen verification records, which phase 6
+introduces. Manufacturing them now would mean faking the votes, and a corpus
+that lies about the verification loop is worse than one that visibly does not
+have it yet.
+
+---
+
+## DD-048 — A CI failure nobody could read
+
+**The defect.** CI failed on its first run and on every run after — four for
+four, at the backend's "Build and test" step. The log could not be read:
+`GET /actions/jobs/{id}/logs` returns **"Must have admin rights to
+Repository"** even for a public repository, and the surefire artifact needs the
+same rights. The only information available off the run page was the word
+`failure` against a step name.
+
+**What was ruled out.** The suite passes 166/166 on macOS arm64 in 50 seconds;
+against `postgis/postgis:17-3.4`, the exact tag CI uses; and inside a
+`maven:3-eclipse-temurin-21` Linux container as root under `TZ=UTC` against
+PostgreSQL 17.0, which covers the timezone, locale, filesystem and user
+differences between a laptop and a runner. `application-deploy.yml` needs no
+environment variables, so `DeployProfileIT` has nothing to be missing. The
+failure is therefore not in the test code, and guessing from outside got
+nowhere.
+
+**The fix is not a fix for the failure.** It is a fix for the not being able to
+see it. `$GITHUB_STEP_SUMMARY` renders on the run page, which anyone who can
+view the run can read without admin rights. A step that runs `if: failure()`
+now writes every surefire failure with its message there, and — for the case
+where the build dies before any test runs — the last 120 lines of the Maven
+log instead. `upload-artifact` also gained `if-no-files-found: ignore`, because
+without it a build that fails before surefire runs makes that step fail too and
+the run reports two failures for one cause.
+
+**The general point.** A red build whose reason is unreadable is barely better
+than no build. Making the failure report itself was worth more than a fifth
+guess at what it might be.
+
+---
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.

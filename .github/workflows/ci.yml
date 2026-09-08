@@ -63,8 +63,63 @@ jobs:
       # produced two wrong diagnoses of a working query (DD-027). The habit is
       # enforced rather than remembered.
       - name: Build and test
-        run: mvn -B clean test
+        run: |
+          set -o pipefail
+          mvn -B --no-transfer-progress clean test 2>&1 | tee /tmp/mvn.log
         working-directory: backend
+
+      # Why this step exists.
+      #
+      # The run log is only downloadable by someone with admin rights on the
+      # repository. That made a failing run effectively unreadable: four runs
+      # failed in a row and the only information available off the run page was
+      # the word "failure" against a step name. The suite passes on macOS
+      # arm64, on Linux amd64-image containers, and against the same PostGIS
+      # tag CI uses, so guessing from the outside got nowhere.
+      #
+      # $GITHUB_STEP_SUMMARY renders on the run page itself, which anybody who
+      # can see the run can read. So the failure now reports itself there:
+      # every surefire failure with its message, and if the build died before
+      # any test ran -- a dependency that would not resolve, a compile error --
+      # the tail of the Maven log instead.
+      - name: Explain the failure on the run page
+        if: failure()
+        working-directory: backend
+        run: |
+          {
+            echo "## Backend build failed"
+            echo
+            if ls target/surefire-reports/*.txt >/dev/null 2>&1; then
+              FAILED=$(grep -lE "FAILURE|ERROR" target/surefire-reports/*.txt || true)
+              if [ -n "$FAILED" ]; then
+                echo "### Failing tests"
+                echo
+                for f in $FAILED; do
+                  echo "<details><summary>$(basename "$f" .txt)</summary>"
+                  echo
+                  echo '```'
+                  sed -n '1,80p' "$f"
+                  echo '```'
+                  echo
+                  echo "</details>"
+                  echo
+                done
+              else
+                echo "Surefire reports exist and none of them record a failure."
+                echo "That points at the build rather than the tests."
+                echo
+              fi
+            else
+              echo "No surefire reports were produced, so the build failed"
+              echo "before any test ran."
+              echo
+            fi
+            echo "### Last 120 lines of the Maven log"
+            echo
+            echo '```'
+            tail -120 /tmp/mvn.log 2>/dev/null || echo "(no maven log captured)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish test report
         if: always()
@@ -72,6 +127,10 @@ jobs:
         with:
           name: backend-surefire-reports
           path: backend/target/surefire-reports/
+          # if-no-files-found matters: without it a build that dies before
+          # surefire runs makes this step fail too, and the run then reports
+          # two failures for one cause.
+          if-no-files-found: ignore
           retention-days: 7
 
   frontend:

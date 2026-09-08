@@ -1,5 +1,20 @@
 # Phase 5 — what is left
 
+> [!NOTE]
+> **Superseded, mostly.** This was written when five items were outstanding.
+> Four are now closed: `main` has everything merged and Vercel deploys from it,
+> the backup's restore path was found to be broken and is fixed and tested
+> (DD-045), the corpus was reduced to ~110 issues with a real status spread
+> (DD-047), and the phase 5 verification checklist is at
+> [PHASE-5-VERIFICATION.md](PHASE-5-VERIFICATION.md).
+>
+> What is genuinely left needs you: the **CI failure** (its reason now prints
+> on the run page — see DD-048), **Cloudinary** credentials, and a decision on
+> a **keep-alive ping** and a **backup schedule**. The "traps already paid for"
+> section below is still worth reading.
+
+
+
 A handoff prompt. Written to be pasted into a fresh session that has no memory
 of how any of this got here.
 

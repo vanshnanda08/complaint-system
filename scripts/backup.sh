@@ -92,11 +92,19 @@ done
 
 cat <<'NOTE'
 
-To restore into an empty database:
-  gzip -dc backups/civictrack-<date>.dump.gz \
-    | docker run --rm -i -e PGPASSWORD="$DATABASE_PASSWORD" postgres:17-alpine \
-        pg_restore -h <host> -p 5432 -U <user> -d postgres --no-owner --no-acl
+To restore:  ./scripts/restore.sh <dump.gz> <target-jdbc-url> <user>
+To check a dump is restorable, against a throwaway container:
+             ./scripts/restore.sh --self-test
 
-Restore into an EMPTY database. Restoring over a populated one leaves Flyway's
-schema history and the actual schema disagreeing, which fails at next startup.
+Use the script. The four-line pg_restore command that used to be printed here
+was wrong: `--schema=public` above does not carry the PostGIS extension -- an
+extension is a database-level object, so a schema filter excludes it -- and
+restoring without creating PostGIS first fails with "type public.geometry does
+not exist" on every spatial table, then cascades to all 36 objects that
+reference them.
+
+The reason nobody noticed for a month is the part worth remembering:
+pg_restore EXITS 0 ANYWAY. It calls those "errors ignored on restore" and
+returns success, so the obvious check said the restore worked while the
+database was empty. restore.sh counts rows instead of trusting the exit code.
 NOTE

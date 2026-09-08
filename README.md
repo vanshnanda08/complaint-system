@@ -132,8 +132,8 @@ at 6 is delivered at 4.
 
 ## What runs today
 
-Both halves run locally against the seeded corpus of 2,000 reports across ~800
-issues.
+Both halves run locally against the seeded corpus of 250 reports across ~110
+issues, spread over eight of the nine statuses.
 
 ```bash
 docker compose up -d                     # PostGIS on 5432
@@ -174,6 +174,7 @@ account at all (DD-017).
 | [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) | Forty decisions: the defect, why it mattered, the fix, the alternative rejected |
 | [docs/civictrack-claude-code-prompts.md](docs/civictrack-claude-code-prompts.md) | Authoritative phase numbering and per-phase verification steps |
 | [docs/phase-5-remaining.md](docs/phase-5-remaining.md) | **Start here to continue.** The five outstanding phase-5 items, plus the traps already paid for |
+| [docs/PHASE-5-VERIFICATION.md](docs/PHASE-5-VERIFICATION.md) | What to check by hand at the one-month milestone, and what a break would look like |
 
 ## Deployed
 
@@ -184,7 +185,11 @@ account at all (DD-017).
 | API docs | https://civictrack-api.onrender.com/swagger-ui/index.html |
 
 Backend on Render (Docker, free tier), database on Supabase, frontend on Vercel.
-The deployed corpus is the seeded 2,000 reports across ~800 issues.
+The deployed corpus is the seeded 250 reports across ~110 issues. It was 2,000
+reports and ~800 issues until phase 5; the smaller corpus is deliberate -- 800
+issues buried the handful that actually illustrate a breach, an escalation and
+a merge, and a corpus you can read end to end is worth more here than one that
+proves the query paginates.
 
 Two things about that stack that are not obvious and have both bitten once:
 

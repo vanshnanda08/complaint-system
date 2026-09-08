@@ -12,7 +12,10 @@ prints.
 | API | https://civictrack-api.onrender.com |
 | API docs | https://civictrack-api.onrender.com/swagger-ui/index.html |
 
-Deployed corpus: **802 issues** from **2,000 reports**, 398 resolved.
+Deployed corpus: **~110 issues** from **250 reports**, across eight of the nine
+statuses. It was 802 issues from 2,000 reports until phase 5 -- reduced
+deliberately, and the reduction is what exposed DD-047: the old corpus only
+ever contained two statuses, which 800 rows of scrolling had hidden.
 
 ---
 
