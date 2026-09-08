@@ -3,98 +3,321 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { useTheme, useThemeSync, toggleTheme } from "@/lib/theme";
+import { useState } from "react";
 
 /**
- * The sticky header.
+ * The primary navigation.
  *
- * Carries the one shadow permitted in the entire system -- a 1px rule
- * underneath (blueprint §1.7). Not a drop shadow: a hairline.
+ * A sidebar from `md` up, a collapsing bar below it. The two are one element:
+ * on a phone the sidebar's own contents would be a logo plus six stacked
+ * full-width rows, and with `sticky top-0` that is most of a 360px viewport
+ * spent on navigation before any content is reached.
  *
  * Staff links appear only for staff. That is a convenience, not a security
  * boundary: every staff endpoint is guarded server-side by role AND by
  * `@issueGuard`, so hiding the link stops a citizen wondering what it is, and
  * nothing more.
+ *
+ * The current page is marked by weight and background, and the background is
+ * `--brand-dark`, never a status colour. Navigation is not a status.
  */
-const PUBLIC_LINKS = [
-  { href: "/map", label: "Map" },
-  { href: "/issues", label: "Issues" },
-  { href: "/dashboard", label: "Dashboard" },
+interface NavLink {
+  href: string;
+  label: string;
+  icon: IconName;
+  staffOnly?: boolean;
+}
+
+const MENU_LINKS: NavLink[] = [
+  { href: "/dashboard", label: "Dashboard", icon: "grid" },
+  { href: "/issues", label: "Issues", icon: "list" },
+  { href: "/map", label: "Map", icon: "pin" },
+  { href: "/report", label: "Report a problem", icon: "flag" },
+  // "Work queue", not "Team". The link goes to a queue of work items; the
+  // blueprint's vocabulary rule (§9) is that the label names the thing.
+  { href: "/staff/queue", label: "Work queue", icon: "inbox", staffOnly: true },
 ];
+
+type IconName = "grid" | "list" | "pin" | "flag" | "inbox" | "signOut" | "signIn";
+
+/** Decorative throughout: every icon here sits beside its own text label. */
+function Icon({ name }: { name: IconName }) {
+  const common = {
+    width: 20,
+    height: 20,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+    focusable: false,
+  };
+  switch (name) {
+    case "grid":
+      return (
+        <svg {...common}>
+          <rect x="3" y="3" width="7" height="9" rx="1" />
+          <rect x="14" y="3" width="7" height="5" rx="1" />
+          <rect x="14" y="12" width="7" height="9" rx="1" />
+          <rect x="3" y="16" width="7" height="5" rx="1" />
+        </svg>
+      );
+    case "list":
+      return (
+        <svg {...common}>
+          <line x1="8" y1="6" x2="21" y2="6" />
+          <line x1="8" y1="12" x2="21" y2="12" />
+          <line x1="8" y1="18" x2="21" y2="18" />
+          <line x1="3" y1="6" x2="3.01" y2="6" />
+          <line x1="3" y1="12" x2="3.01" y2="12" />
+          <line x1="3" y1="18" x2="3.01" y2="18" />
+        </svg>
+      );
+    case "pin":
+      return (
+        <svg {...common}>
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
+          <circle cx="12" cy="10" r="3" />
+        </svg>
+      );
+    case "flag":
+      return (
+        <svg {...common}>
+          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+          <line x1="4" y1="22" x2="4" y2="15" />
+        </svg>
+      );
+    case "inbox":
+      return (
+        <svg {...common}>
+          <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+          <path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" />
+        </svg>
+      );
+    case "signOut":
+      return (
+        <svg {...common}>
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      );
+    case "signIn":
+      return (
+        <svg {...common}>
+          <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" />
+          <polyline points="10 17 15 12 10 7" />
+          <line x1="15" y1="12" x2="3" y2="12" />
+        </svg>
+      );
+  }
+}
+
+/**
+ * Shared row shape. Deliberately carries NO background utility.
+ *
+ * It used to include `bg-transparent`, so that the <button> rows would not
+ * show a user-agent button background. That silently broke the active link:
+ * the active state appends `bg-brand-dark`, but which of two background
+ * utilities wins is decided by their order in the stylesheet, not by their
+ * order in the class attribute -- and `bg-transparent` came later. The active
+ * item rendered white-on-white and vanished, in light mode only, while the
+ * build stayed green.
+ *
+ * Each caller now sets exactly one background, so there is nothing to resolve.
+ */
+const ROW =
+  "flex items-center gap-3 px-4 rounded-2xl font-medium no-underline transition-colors w-full text-left border-0 cursor-pointer";
+
+/** The non-active background, for links and buttons alike. */
+const ROW_IDLE = "bg-transparent text-ink-muted hover:bg-rule hover:text-ink";
 
 export function SiteHeader() {
   const { session, signOut, initialising } = useAuth();
   const pathname = usePathname();
+  const theme = useTheme();
   const isStaff = session && session.role !== "CITIZEN";
 
-  return (
-    <header
-      className="sticky top-0 z-[500] bg-surface-raised border-b border-rule"
-      style={{ boxShadow: "none" }}
-    >
-      <nav
-        className="mx-auto flex flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2"
-        style={{ maxWidth: 1100 }}
-        aria-label="Main"
+  // Restores the theme class after React's dev-only remount clears it. See
+  // useThemeSync -- no-op in production.
+  useThemeSync();
+
+  // Mobile disclosure. Closed by the link's own onClick rather than by an
+  // effect watching `pathname` -- an event handler needs no effect, and
+  // setting state inside an effect body is what the compiler rules reject.
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+
+  const renderLink = (l: NavLink) => {
+    if (l.staffOnly && !isStaff) return null;
+    // Exact match, or a child route under it. Plain `startsWith` would light
+    // up "/issues" while sitting on "/issues-archive".
+    const isActive = pathname === l.href || pathname.startsWith(`${l.href}/`);
+
+    return (
+      <Link
+        key={l.href}
+        href={l.href}
+        onClick={close}
+        aria-current={isActive ? "page" : undefined}
+        className={`${ROW} ${
+          isActive ? "bg-brand-dark text-white font-semibold" : ROW_IDLE
+        }`}
+        style={{ minHeight: "var(--hit-min)" }}
       >
-        <Link href="/" className="text-ink no-underline flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            style={{ width: 3, height: 18, background: "var(--ink)", display: "inline-block" }}
-          />
-          <span className="text-heading">CivicTrack</span>
-        </Link>
+        <Icon name={l.icon} />
+        <span className="flex-1">{l.label}</span>
+      </Link>
+    );
+  };
 
-        {PUBLIC_LINKS.map((l) => (
+  return (
+    <header className="sticky top-0 z-[500] bg-surface-raised border-b md:border-b-0 md:border-r border-rule shrink-0 w-full md:w-[var(--sidebar-width)]">
+      <div className="md:h-screen md:overflow-y-auto flex flex-col p-4 md:p-6">
+        <div className="flex items-center justify-between">
           <Link
-            key={l.href}
-            href={l.href}
-            className="text-dense text-ink no-underline"
-            style={{
-              // Current page marked by weight and an underline, not by colour.
-              fontWeight: pathname.startsWith(l.href) ? 600 : 400,
-              textDecoration: pathname.startsWith(l.href) ? "underline" : "none",
-              textUnderlineOffset: 4,
-            }}
+            href="/"
+            onClick={close}
+            className="text-ink no-underline flex items-center gap-3 px-2"
           >
-            {l.label}
-          </Link>
-        ))}
-
-        {isStaff && (
-          <Link href="/staff/queue" className="text-dense text-ink no-underline">
-            Work queue
-          </Link>
-        )}
-
-        <span className="ml-auto flex items-center gap-4">
-          {!initialising && session && (
-            <>
-              <Link href="/me/reports" className="text-meta text-ink no-underline">
-                {session.fullName}
-              </Link>
-              <button
-                type="button"
-                onClick={() => void signOut()}
-                className="text-meta text-ink underline bg-transparent border-0 cursor-pointer p-2"
+            <span className="w-9 h-9 rounded-xl bg-brand-primary flex items-center justify-center text-white flex-shrink-0">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                focusable="false"
               >
-                Sign out
-              </button>
-            </>
-          )}
-          {!initialising && !session && (
-            <Link href="/login" className="text-meta text-ink no-underline underline">
-              Sign in
-            </Link>
-          )}
-          <Link
-            href="/report"
-            className="inline-flex items-center px-3 bg-ink text-surface-raised text-dense no-underline"
-            style={{ minHeight: 40, borderRadius: "var(--radius)" }}
-          >
-            Report a problem
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5" />
+                <path d="M2 12l10 5 10-5" />
+              </svg>
+            </span>
+            <span className="text-heading font-semibold tracking-tight">CivicTrack</span>
           </Link>
-        </span>
-      </nav>
+
+          {/* Below md only: the disclosure for everything under this row. */}
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            aria-controls="site-nav"
+            aria-label={open ? "Close menu" : "Open menu"}
+            className="md:hidden flex items-center justify-center rounded-xl border border-rule bg-transparent text-ink cursor-pointer"
+            style={{ width: "var(--hit-min)", height: "var(--hit-min)" }}
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              {open ? (
+                <>
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                </>
+              ) : (
+                <>
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </>
+              )}
+            </svg>
+          </button>
+        </div>
+
+        <nav
+          id="site-nav"
+          aria-label="Main"
+          className={`${open ? "flex" : "hidden"} md:flex flex-col flex-1 mt-6 md:mt-8`}
+        >
+          <p className="text-meta text-ink-muted uppercase tracking-wider mb-2 px-4">
+            Menu
+          </p>
+          <div className="flex flex-col gap-1">{MENU_LINKS.map(renderLink)}</div>
+
+          <div className="flex flex-col gap-1 mt-8 md:mt-auto md:pt-8">
+            {!initialising && session && (
+              <>
+                <Link
+                  href="/me/reports"
+                  onClick={close}
+                  className={`${ROW} ${ROW_IDLE}`}
+                  style={{ minHeight: "var(--hit-min)" }}
+                >
+                  <Icon name="signIn" />
+                  <span className="flex-1 truncate">{session.fullName}</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    void signOut();
+                  }}
+                  className={`${ROW} ${ROW_IDLE}`}
+                  style={{ minHeight: "var(--hit-min)" }}
+                >
+                  <Icon name="signOut" />
+                  <span>Sign out</span>
+                </button>
+              </>
+            )}
+            {!initialising && !session && (
+              <Link
+                href="/login"
+                onClick={close}
+                className={`${ROW} ${ROW_IDLE}`}
+                style={{ minHeight: "var(--hit-min)" }}
+              >
+                <Icon name="signIn" />
+                <span>Sign in</span>
+              </Link>
+            )}
+
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className={`${ROW} ${ROW_IDLE}`}
+              style={{ minHeight: "var(--hit-min)" }}
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                {theme === "dark" ? (
+                  <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                ) : (
+                  <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                )}
+              </svg>
+              <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+            </button>
+          </div>
+        </nav>
+      </div>
     </header>
   );
 }

@@ -22,7 +22,8 @@ import type { ApiError } from "@/lib/api";
  * different claim. The aggregate queries and the SSE live updates are phase 7.
  *
  * Tiles fail independently. `overdueCount` is nullable precisely so one failing
- * aggregate cannot blank the page.
+ * aggregate cannot blank the page -- so a null renders the sentence saying so,
+ * never a dash. A dash in a number's place is read as a number.
  */
 export default function DashboardPage() {
   const summary = useDashboardSummary();
@@ -47,20 +48,19 @@ export default function DashboardPage() {
 
       {summary.data && (
         <>
-          <div
-            className="mt-6 grid gap-3"
-            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
-          >
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <MetricTile
               label="Currently overdue"
+              emphasis
               {...(summary.data.overdueCount === null
-                ? { pending: "This figure could not be computed just now. It will return on the next refresh." }
-                : { value: summary.data.overdueCount.toLocaleString("en-IN") })}
-              trend={
-                summary.data.overdueCount === null
-                  ? undefined
-                  : "Breached and still on the clock"
-              }
+                ? {
+                    pending:
+                      "This figure could not be computed just now. It will return on the next refresh.",
+                  }
+                : {
+                    value: summary.data.overdueCount.toLocaleString("en-IN"),
+                    trend: "Breached and still on the clock",
+                  })}
             />
 
             <MetricTile
@@ -96,10 +96,7 @@ export default function DashboardPage() {
             visible as what it does.
           </p>
 
-          <div
-            className="mt-4 grid gap-3"
-            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}
-          >
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <MetricTile
               label="Median resolution time"
               pending="Will show the median days to resolve, by ward and by department."

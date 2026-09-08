@@ -191,8 +191,10 @@ export default function ReportComposerPage() {
   });
 
   return (
-    <PageShell>
-      <h1 className="text-display">Report a problem</h1>
+    <PageShell wide>
+      <div className="mb-6">
+        <h1 className="text-display">Report a problem</h1>
+      </div>
 
       {/* No action attribute and no server post: an event handler, per §6. */}
       <form onSubmit={onSubmit} noValidate>
@@ -207,198 +209,202 @@ export default function ReportComposerPage() {
           form then failed validation with no visible error, because the failing
           fields had no rendered control to attach a message to.
         */}
-        {/* ---- 1. Photo ---- */}
-        <section className="mt-6">
-          <h2 className="text-heading">Photo</h2>
-          <div className="mt-3">
-            <PhotoUploader
-              onChange={(img) => {
-                patch({ photo: img, photoUrl: null });
-                setValue("hasPhoto", (img != null) as true, { shouldValidate: formState.isSubmitted });
-              }}
-              error={errors.hasPhoto?.message}
-            />
-          </div>
-        </section>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
+          {/* LEFT COLUMN: Photo & Details */}
+          <div className="flex flex-col gap-8">
+            <section>
+              <h2 className="text-heading mb-3">Photo</h2>
+              <PhotoUploader
+                onChange={(img) => {
+                  patch({ photo: img, photoUrl: null });
+                  setValue("hasPhoto", (img != null) as true, { shouldValidate: formState.isSubmitted });
+                }}
+                error={errors.hasPhoto?.message}
+              />
+            </section>
 
-        {/* ---- 2. Location ---- */}
-        <section className="mt-8">
-          <h2 className="text-heading">Location</h2>
-
-          {geo.kind === "locating" && <LoadingState label="Finding your location" />}
-
-          {geo.kind === "ok" && !manualPin && (
-            <p className="mt-2 text-dense">
-              Located to within {metres(geo.accuracyM)}.{" "}
-              <button
-                type="button"
-                className="underline bg-transparent border-0 p-0 cursor-pointer text-ink text-dense"
-                onClick={() => placePin(geo.lat, geo.lng)}
-              >
-                Place the pin myself instead
-              </button>
-            </p>
-          )}
-
-          {/* Field-level, inline, specific. Blueprint §3.2's own example. */}
-          {geo.kind === "too-imprecise" && (
-            <p className="mt-2 text-dense" style={{ color: "var(--st-breached)" }}>
-              GPS accuracy is {metres(geo.accuracyM)}. Place the pin on the map instead.
-            </p>
-          )}
-          {geo.kind === "denied" && (
-            <p className="mt-2 text-dense" style={{ color: "var(--st-breached)" }}>
-              Location access is blocked for this site. Place the pin on the map instead.
-            </p>
-          )}
-          {geo.kind === "unavailable" && (
-            <p className="mt-2 text-dense" style={{ color: "var(--st-breached)" }}>
-              Your device could not report a location. Place the pin on the map instead.
-            </p>
-          )}
-
-          {(needsManualPin || manualPin) && (
-            <div className="mt-3">
-              <p className="text-meta text-ink-muted">
-                Tap the map where the problem is. Accuracy worse than {MAX_ACCURACY_M} m is
-                not precise enough for a crew to find it.
-              </p>
-              <div className="mt-2">
-                {/* Leaflet is downloaded ONLY at this point. */}
-                <MapCanvas
-                  center={{ lat: lat ?? 30.9, lng: lng ?? 75.85 }}
-                  zoom={17}
-                  height={300}
-                  onPinPlace={placePin}
-                  markers={
-                    lat != null && lng != null
-                      ? [{ id: "pin", lat, lng, kind: "report" as const, color: "#14181A", label: "Your pin" }]
-                      : []
-                  }
+            <section>
+              <h2 className="text-heading mb-3">Details</h2>
+              
+              {categories.isPending && <LoadingState label="Loading categories" />}
+              {categories.data && (
+                <CategoryPicker
+                  categories={categories.data.map((c) => ({ code: c.code, displayName: c.displayName }))}
+                  value={categoryCode || undefined}
+                  onChange={(code) => {
+                    setValue("categoryCode", code, { shouldValidate: true });
+                    patch({ categoryCode: code });
+                  }}
                 />
-              </div>
-              {lat != null && lng != null && (
-                <p className="mt-2 text-meta text-ink-muted font-mono">
-                  {lat.toFixed(5)}, {lng.toFixed(5)}
+              )}
+              {errors.categoryCode && (
+                <p className="mt-2 text-meta" style={{ color: "var(--st-breached)" }} role="alert">
+                  {errors.categoryCode.message}
                 </p>
               )}
-            </div>
-          )}
 
-          {geo.kind !== "ok" && !manualPin && (
-            <p className="mt-2">
-              <button
-                type="button"
-                className="underline bg-transparent border-0 p-0 cursor-pointer text-ink text-dense"
-                onClick={locate}
-              >
-                Try locating me again
-              </button>
-            </p>
-          )}
+              <div className="mt-5 flex flex-col gap-4">
+                <label className="flex flex-col gap-1">
+                  <span className="text-meta">Landmark (optional)</span>
+                  <span className="text-meta text-ink-muted">Helps a crew find the exact spot.</span>
+                  <input
+                    {...register("landmark", { onChange: (e) => patch({ landmark: e.target.value }) })}
+                    maxLength={200}
+                    placeholder="Near the bus stop"
+                    className="bg-surface-raised border border-rule px-3 text-body"
+                    style={{ minHeight: "var(--hit-min)", borderRadius: "var(--radius)" }}
+                  />
+                </label>
 
-          {(errors.lat || errors.lng || errors.accuracyM) && (
-            <p className="mt-2 text-meta" style={{ color: "var(--st-breached)" }} role="alert">
-              {errors.accuracyM?.message ?? errors.lat?.message ?? errors.lng?.message}
-            </p>
-          )}
-        </section>
-
-        {/* ---- 3. Details ---- */}
-        <section className="mt-8">
-          <h2 className="text-heading">Details</h2>
-
-          <div className="mt-3">
-            {categories.isPending && <LoadingState label="Loading categories" />}
-            {categories.data && (
-              <CategoryPicker
-                categories={categories.data.map((c) => ({ code: c.code, displayName: c.displayName }))}
-                value={categoryCode || undefined}
-                onChange={(code) => {
-                  setValue("categoryCode", code, { shouldValidate: true });
-                  patch({ categoryCode: code });
-                }}
-              />
-            )}
-            {errors.categoryCode && (
-              <p className="mt-2 text-meta" style={{ color: "var(--st-breached)" }} role="alert">
-                {errors.categoryCode.message}
-              </p>
-            )}
+                <label className="flex flex-col gap-1">
+                  <span className="text-meta">Description (optional)</span>
+                  <textarea
+                    {...register("description", { onChange: (e) => patch({ description: e.target.value }) })}
+                    maxLength={2000}
+                    rows={3}
+                    className="bg-surface-raised border border-rule px-3 py-2 text-body"
+                    style={{ borderRadius: "var(--radius)" }}
+                  />
+                </label>
+              </div>
+            </section>
           </div>
 
-          <div className="mt-5 flex flex-col gap-4">
-            <label className="flex flex-col gap-1" style={{ maxWidth: "var(--measure-form)" }}>
-              <span className="text-meta">Landmark (optional)</span>
-              <span className="text-meta text-ink-muted">Helps a crew find the exact spot.</span>
-              <input
-                {...register("landmark", { onChange: (e) => patch({ landmark: e.target.value }) })}
-                maxLength={200}
-                placeholder="Near the bus stop"
-                className="bg-surface-raised border border-rule px-3 text-body"
-                style={{ minHeight: "var(--hit-min)", borderRadius: "var(--radius)" }}
-              />
-            </label>
+          {/* RIGHT COLUMN: Location & Submit */}
+          <div className="flex flex-col gap-8">
+            <section>
+              <h2 className="text-heading mb-3">Location</h2>
 
-            <label className="flex flex-col gap-1" style={{ maxWidth: "var(--measure-form)" }}>
-              <span className="text-meta">Description (optional)</span>
-              <textarea
-                {...register("description", { onChange: (e) => patch({ description: e.target.value }) })}
-                maxLength={2000}
-                rows={3}
-                className="bg-surface-raised border border-rule px-3 py-2 text-body"
-                style={{ borderRadius: "var(--radius)" }}
-              />
-            </label>
+              {geo.kind === "locating" && <LoadingState label="Finding your location" />}
+
+              {geo.kind === "ok" && !manualPin && (
+                <p className="mb-3 text-dense">
+                  Located to within {metres(geo.accuracyM)}.{" "}
+                  <button
+                    type="button"
+                    className="underline bg-transparent border-0 p-0 cursor-pointer text-ink font-medium"
+                    onClick={() => placePin(geo.lat, geo.lng)}
+                  >
+                    Place the pin myself instead
+                  </button>
+                </p>
+              )}
+
+              {geo.kind === "too-imprecise" && (
+                <p className="mb-3 text-dense" style={{ color: "var(--st-breached)" }}>
+                  GPS accuracy is {metres(geo.accuracyM)}. Place the pin on the map instead.
+                </p>
+              )}
+              {geo.kind === "denied" && (
+                <p className="mb-3 text-dense" style={{ color: "var(--st-breached)" }}>
+                  Location access is blocked for this site. Place the pin on the map instead.
+                </p>
+              )}
+              {geo.kind === "unavailable" && (
+                <p className="mb-3 text-dense" style={{ color: "var(--st-breached)" }}>
+                  Your device could not report a location. Place the pin on the map instead.
+                </p>
+              )}
+
+              {(needsManualPin || manualPin) && (
+                <div>
+                  <p className="text-meta text-ink-muted mb-3">
+                    Tap the map where the problem is. Accuracy worse than {MAX_ACCURACY_M} m is
+                    not precise enough for a crew to find it.
+                  </p>
+                  {/* Leaflet is downloaded ONLY at this point. */}
+                  <div className="rounded-2xl overflow-hidden border border-rule">
+                    <MapCanvas
+                      center={{ lat: lat ?? 30.9, lng: lng ?? 75.85 }}
+                      zoom={17}
+                      height={240}
+                      onPinPlace={placePin}
+                      markers={
+                        lat != null && lng != null
+                          ? [{ id: "pin", lat, lng, kind: "report" as const, color: "#14181A", label: "Your pin" }]
+                          : []
+                      }
+                    />
+                  </div>
+                  {lat != null && lng != null && (
+                    <p className="mt-2 text-meta text-ink-muted font-mono">
+                      {lat.toFixed(5)}, {lng.toFixed(5)}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {geo.kind !== "ok" && !manualPin && (
+                <p className="mt-3">
+                  <button
+                    type="button"
+                    className="underline bg-transparent border-0 p-0 cursor-pointer text-ink font-medium"
+                    onClick={locate}
+                  >
+                    Try locating me again
+                  </button>
+                </p>
+              )}
+
+              {(errors.lat || errors.lng || errors.accuracyM) && (
+                <p className="mt-3 text-meta" style={{ color: "var(--st-breached)" }} role="alert">
+                  {errors.accuracyM?.message ?? errors.lat?.message ?? errors.lng?.message}
+                </p>
+              )}
+            </section>
+
+            {/*
+              Sticky to the bottom of the viewport on one column, static once
+              the layout splits in two. On a phone this section sits below the
+              map, and the map is 240px tall -- without the sticky the submit
+              button is off screen for the whole of the location step, on the
+              screen whose blueprint target is the entire flow in under twenty
+              seconds, held one-handed, outdoors.
+            */}
+            <section
+              className="bg-surface-raised p-6 rounded-3xl border border-rule flex flex-col gap-4 sticky bottom-0 z-10 lg:static lg:mt-auto"
+            >
+              {uploadFraction !== null && (
+                <UploadProgress fraction={uploadFraction} />
+              )}
+
+              {failed && (
+                <p className="text-meta" style={{ color: "var(--st-breached)" }} role="alert">
+                  {failed} Nothing was lost — your photo and details are still here.
+                </p>
+              )}
+
+              <Button type="submit" disabled={formState.isSubmitting} className="w-full">
+                {formState.isSubmitting
+                  ? "Sending…"
+                  : failed
+                    ? "Retry submission"
+                    : report.photo
+                      ? `Send report · ${fileSize(report.photo.bytes)}`
+                      : "Send report"}
+              </Button>
+
+              {/* The one place report §12.6's limitation is surfaced to a citizen. */}
+              {!session && (
+                <p className="text-meta text-ink-muted">
+                  You are reporting anonymously. An anonymous report cannot be used to
+                  confirm the fix later.{" "}
+                  <a href="/login" className="underline text-ink">
+                    Sign in first
+                  </a>{" "}
+                  if you want to be asked.
+                </p>
+              )}
+
+              {!CLOUDINARY_CONFIGURED && (
+                <p className="text-meta text-ink-muted">
+                  Photo hosting is not configured, so a placeholder image URL is sent.
+                  Everything else works normally.
+                </p>
+              )}
+            </section>
           </div>
-        </section>
-
-        {/* ---- Submit ---- */}
-        <section
-          className="mt-8 sticky bottom-0 bg-surface pt-3 pb-4 border-t border-rule"
-          style={{ marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}
-        >
-          {uploadFraction !== null && (
-            <div className="mb-3">
-              <UploadProgress fraction={uploadFraction} />
-            </div>
-          )}
-
-          {failed && (
-            <p className="mb-3 text-dense" style={{ color: "var(--st-breached)" }} role="alert">
-              {failed} Nothing was lost — your photo and details are still here.
-            </p>
-          )}
-
-          <Button type="submit" disabled={formState.isSubmitting} className="w-full">
-            {formState.isSubmitting
-              ? "Sending…"
-              : failed
-                ? "Retry submission"
-                : report.photo
-                  ? `Send report · ${fileSize(report.photo.bytes)}`
-                  : "Send report"}
-          </Button>
-
-          {!session && (
-            // The one place report §12.6's limitation is surfaced to a citizen.
-            <p className="mt-2 text-meta text-ink-muted">
-              You are reporting anonymously. An anonymous report cannot be used to
-              confirm the fix later.{" "}
-              <a href="/login" className="underline text-ink">
-                Sign in first
-              </a>{" "}
-              if you want to be asked.
-            </p>
-          )}
-
-          {!CLOUDINARY_CONFIGURED && (
-            <p className="mt-2 text-meta text-ink-muted">
-              Photo hosting is not configured, so a placeholder image URL is sent.
-              Everything else works normally.
-            </p>
-          )}
-        </section>
+        </div>
       </form>
     </PageShell>
   );
