@@ -1496,6 +1496,71 @@ against a persistent database rather than a fresh one.
 
 ---
 
+## DD-040 — "Direct connection, never the pooler" was half right, and the half that was missing cost a day
+
+**The written rule.** `civictrack-claude-code-prompts.md` phase 5 says, in bold:
+
+> connect to the DIRECT endpoint (port 5432), never the transaction pooler
+> (6543). Hibernate uses server-side prepared statements, which break under
+> PgBouncer/Supavisor transaction pooling; and our entire clustering concurrency
+> design rests on `pg_advisory_xact_lock` and `FOR UPDATE` row locks.
+
+Every word of that reasoning is correct. The instruction it produces is not.
+
+**What actually happened.** Supabase's direct host, `db.<ref>.supabase.co`, has
+**no A record** — it is IPv6-only, and has been since Supabase moved IPv4 to a
+paid add-on. Render's free tier has no IPv6 egress. The application therefore
+failed on startup with:
+
+```
+Caused by: java.net.SocketException: Network is unreachable
+```
+
+Not "connection refused", not a timeout, not an authentication failure. That
+specific message, from a host with an AAAA record and no A record, is the
+signature.
+
+**The fix, and why it does not violate the rule.** Supavisor has two modes, and
+the prompt conflated them with a port number:
+
+| Mode | Host | Port | Session semantics |
+|---|---|---|---|
+| Direct | `db.<ref>.supabase.co` | 5432 | Full — but **IPv6 only** |
+| Session pooler | `aws-0-<region>.pooler.supabase.com` | **5432** | Full: one backend per client session |
+| Transaction pooler | `aws-0-<region>.pooler.supabase.com` | 6543 | **Broken for us** — multiplexed per transaction |
+
+The deployment uses the **session pooler**. It is IPv4-reachable, and it keeps
+exactly the properties the rule exists to protect: a dedicated backend per
+client session, so server-side prepared statements survive and
+`pg_advisory_xact_lock` and `FOR UPDATE` behave as they do on a direct
+connection. The username changes to `postgres.<project-ref>`, which is how
+Supavisor routes to the right project.
+
+**Why this entry exists rather than a quiet config change.** The rule as written
+is memorable and wrong, and it was followed correctly twice — once at first
+deploy, and again after a password rotation, because Supabase's own UI shows
+the direct string by default and that is precisely the page somebody lands on
+after resetting a password. Both times it produced the same unreachable-network
+failure, and the second time it took down a working deployment.
+
+**The rule, corrected: the port is not the tell, the hostname is.**
+
+- `db.<ref>.supabase.co` — direct, IPv6 only, unusable from an IPv4-only host.
+- `...pooler.supabase.com:6543` — transaction mode, breaks Hibernate. Never.
+- `...pooler.supabase.com:5432` — session mode. **This one.**
+
+The phase 5 prompt has been amended to say this. `backend/.env.seed.example`
+carries the pooler host in a comment for the same reason.
+
+**A note for anyone moving off the free tier.** Buying Supabase's IPv4 add-on,
+or deploying somewhere with IPv6 egress, makes the direct host work and removes
+the pooler from the path entirely. That is the better arrangement if it is
+available: one fewer component between the application and its database, and
+one fewer thing to get subtly wrong.
+
+
+---
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.

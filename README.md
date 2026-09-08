@@ -165,6 +165,30 @@ There is no seeded citizen login — citizens in the corpus have no password.
 Register at `/register` to exercise `/me/reports`. Reporting itself needs no
 account at all (DD-017).
 
+## Deployed
+
+| | |
+|---|---|
+| Frontend | https://civic-track-six.vercel.app |
+| API | https://civictrack-api.onrender.com |
+| API docs | https://civictrack-api.onrender.com/swagger-ui/index.html |
+
+Backend on Render (Docker, free tier), database on Supabase, frontend on Vercel.
+The deployed corpus is the seeded 2,000 reports across ~800 issues.
+
+Two things about that stack that are not obvious and have both bitten once:
+
+**Connect through Supabase's SESSION POOLER, not the direct endpoint.** The
+direct host `db.<ref>.supabase.co` is IPv6-only and Render's free tier has no
+IPv6 route, so it fails with "Network is unreachable". Use
+`aws-0-<region>.pooler.supabase.com:5432` with user `postgres.<project-ref>`.
+Not port 6543 — that is transaction mode and breaks Hibernate's prepared
+statements. The port is not the tell; the hostname is (DD-040).
+
+**Render's free tier sleeps after 15 minutes idle**, so the first request after
+a quiet spell takes roughly a minute. The CDS archive gets the application
+itself to ~3.5 s; the rest is Render starting the container.
+
 ## Testing
 
 ```bash

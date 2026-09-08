@@ -20,3 +20,10 @@ frontend/.env*.local
 
 # Local secrets
 .env
+
+# Credentials for one-off scripts (scripts/seed-remote.sh). Kept in a file
+# rather than on the command line so they never reach shell history, `ps`
+# output, or a screenshot of a terminal.
+backend/.env.seed
+*.env.seed
+!*.env.seed.example

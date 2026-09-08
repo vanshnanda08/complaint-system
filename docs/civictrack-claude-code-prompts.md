@@ -638,8 +638,15 @@ a URL and letting them report something from their own phone.
   free Postgres indefinitely, ships PostGIS preinstalled, and only pauses
   after a week of inactivity, which our keep-alive ping prevents.
 
-  CRITICAL: connect to the DIRECT endpoint (port 5432), never the transaction
-  pooler (6543). Two reasons, both fatal to this project specifically:
+  CRITICAL: use the SESSION POOLER endpoint
+  (aws-0-<region>.pooler.supabase.com, port 5432, user postgres.<project-ref>),
+  never the transaction pooler (port 6543).
+
+  The direct endpoint (db.<ref>.supabase.co) is IPv6-only and unreachable from
+  Render's free tier -- it fails with "Network is unreachable". The session
+  pooler is IPv4 and keeps one backend per client session, so it preserves
+  everything the direct connection would. The port is not the tell; the
+  hostname is. See DD-040. Two reasons, both fatal to this project specifically:
   Hibernate uses server-side prepared statements, which break under
   PgBouncer/Supavisor transaction pooling; and our entire clustering
   concurrency design rests on pg_advisory_xact_lock and FOR UPDATE row locks.
