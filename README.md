@@ -173,6 +173,7 @@ account at all (DD-017).
 | [docs/MONTH-1-STATUS.md](docs/MONTH-1-STATUS.md) | What works, what is stubbed, and what went wrong — written to be checkable |
 | [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) | Forty decisions: the defect, why it mattered, the fix, the alternative rejected |
 | [docs/civictrack-claude-code-prompts.md](docs/civictrack-claude-code-prompts.md) | Authoritative phase numbering and per-phase verification steps |
+| [docs/phase-5-remaining.md](docs/phase-5-remaining.md) | **Start here to continue.** The five outstanding phase-5 items, plus the traps already paid for |
 
 ## Deployed
 
