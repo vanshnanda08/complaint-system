@@ -2,11 +2,17 @@ package com.civictrack.report.api;
 
 import com.civictrack.clustering.ClusterOutcome;
 import com.civictrack.clustering.ClusteringService;
+import com.civictrack.department.Department;
+import com.civictrack.department.DepartmentRepository;
+import com.civictrack.issue.Issue;
+import com.civictrack.issue.IssueRepository;
 import com.civictrack.report.dto.ClusterResultDto;
 import com.civictrack.report.dto.IngestReportRequest;
 import com.civictrack.user.Actor;
 import com.civictrack.user.Role;
 import com.civictrack.user.auth.Actors;
+import com.civictrack.ward.Ward;
+import com.civictrack.ward.WardRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -49,6 +56,9 @@ import java.util.UUID;
 public class ReportController {
 
     private final ClusteringService clusteringService;
+    private final IssueRepository issues;
+    private final WardRepository wards;
+    private final DepartmentRepository departments;
 
     @PostMapping
     public ResponseEntity<ClusterResultDto> ingest(@Valid @RequestBody IngestReportRequest request,
@@ -60,7 +70,40 @@ public class ReportController {
         return ResponseEntity
                 .created(UriComponentsBuilder.fromPath("/api/v1/issues/{id}")
                         .buildAndExpand(outcome.issueId()).toUri())
-                .body(ClusterResultDto.from(outcome));
+                .body(labelled(outcome));
+    }
+
+    /**
+     * Adds the three display names the result screen prints -- priority band,
+     * ward, department -- reading them after the ingest transaction has
+     * committed.
+     *
+     * <p>Deliberately outside that transaction. It holds an advisory lock on
+     * the report's cell and row locks on the candidate issues, and it
+     * serialises every simultaneous report of the same defect, which is the
+     * exact contention the clustering design exists to manage. Lengthening
+     * that critical section with three joins so a screen can print "Roads"
+     * instead of a UUID is a bad trade, and it is why these names are not on
+     * {@link ClusterOutcome}.
+     *
+     * <p>The whole lookup degrades to nulls rather than failing the request.
+     * By the time this runs the citizen's report is durably committed and the
+     * ticket exists; throwing away a successful submission because a label
+     * could not be read would be the worst possible response to a minor
+     * failure.
+     */
+    private ClusterResultDto labelled(ClusterOutcome outcome) {
+        Issue issue = issues.findById(outcome.issueId()).orElse(null);
+        if (issue == null) {
+            return ClusterResultDto.from(outcome, null, null, null);
+        }
+        return ClusterResultDto.from(outcome,
+                issue.getPriority().name(),
+                wards.findById(issue.getWardId()).map(Ward::getName).orElse(null),
+                Optional.ofNullable(issue.getDepartmentId())
+                        .flatMap(departments::findById)
+                        .map(Department::getName)
+                        .orElse(null));
     }
 
     /**

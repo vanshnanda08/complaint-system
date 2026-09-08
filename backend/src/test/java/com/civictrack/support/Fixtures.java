@@ -124,6 +124,24 @@ public class Fixtures {
         return issue(categoryCode, now.minusSeconds(48 * 3600), now.minusSeconds(3600));
     }
 
+    /**
+     * The one issue in the database.
+     *
+     * <p>For tests that submit a single report through the real ingest
+     * endpoint and then need the issue it produced. Fails loudly rather than
+     * picking one if there are several, because a test that thought it had
+     * created one issue and actually created two is a test whose premise is
+     * already broken.
+     */
+    public Issue onlyIssue() {
+        java.util.List<Issue> all = issues.findAll();
+        if (all.size() != 1) {
+            throw new IllegalStateException(
+                    "Expected exactly one issue, found " + all.size());
+        }
+        return all.get(0);
+    }
+
     /** Deletes everything an issue-scoped test could have written. */
     public void clearIssues() {
         jdbc.update("DELETE FROM escalation_events");

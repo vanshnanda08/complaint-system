@@ -15,7 +15,7 @@ dashboard publishes the resulting numbers without a login.
 
 ```
 backend/     Spring Boot 3.5 on Java 21
-frontend/    Next.js App Router (from phase 8)
+frontend/    Next.js 16 App Router, Tailwind v4 (phase 4)
 docs/        Specification, and DESIGN-DECISIONS.md
 ```
 
@@ -113,14 +113,73 @@ listed as 3, 4 and 5.
 | Phase | Deliverable | Status |
 |---|---|---|
 | 1 | Flyway schema, PostGIS wired, health check, `GeoFactory`, ward canary | **done** |
-| 2 | Clustering engine, candidate query, weighted centroid, extent cap, advisory lock, concurrency test | **done** |
+| 2 | Clustering engine, candidate query, weighted centroid, extent cap, advisory lock, concurrency test, seed corpus and ground-truth labels | **done** |
 | 3 | State machine and `TransitionPolicy`, status history, staff queue, SLA clock, escalation ladder, ShedLock sweep, priority ageing, auth and RBAC | **done** |
-| 4 | Cloudinary, photo validation, dHash, proof-photo flow, device throttling | next |
-| 5 | Verification quorum, timeout sweep, auto-close, notifications | |
-| 6 | Next.js: report flow, map, issue detail, cluster inspector | |
-| 7 | Public dashboard, SSE | |
-| 8 | Split/merge moderation tool | |
-| 9 | Seed corpus, demo profile, deploy, rehearse | |
+| 4 | Public read API, Next.js frontend: design tokens, shared components, twelve routes, report composer, cluster inspector, staff work view, auth with httpOnly refresh | **done** |
+| 5 | Deploy: Docker image, Supabase, Vercel, GitHub Actions, Cloudinary, Swagger UI | next |
+| 6 | Verification quorum, timeout sweep, auto-close, notifications, `/me/verify` | |
+| 7 | Moderation, public dashboard aggregates, SSE, ward detail | |
+| 8 | Evaluation: clustering accuracy against the ground-truth labels | |
+| 9 | Anti-abuse, rate limiting, polish | |
+
+Note that this table uses the numbering in the prompts document, **not** the
+blueprint's own eleven-phase table, which is superseded (DD-022). Phase 3 here
+delivers what the blueprint listed as 3, 4 and 5; the frontend the blueprint put
+at 6 is delivered at 4.
+
+## What runs today
+
+Both halves run locally against the seeded corpus of 2,000 reports across ~800
+issues.
+
+```bash
+docker compose up -d                     # PostGIS on 5432
+
+cd backend && mvn spring-boot:run \
+  -Dspring-boot.run.profiles=demo \
+  -Dspring-boot.run.arguments="--civictrack.demo.staff-password=demo1234 \
+                               --civictrack.cors.allowed-origins=http://localhost:3000"
+
+cd frontend && npm install && npm run dev     # http://localhost:3000
+```
+
+The `demo` profile is what enables login for the seeded staff accounts: they
+ship from the migration **without** a password hash, deliberately, because a
+migration is the wrong place to put credentials (V4). It also compresses SLAs to
+about three minutes so a breach and an escalation happen while a slide is still
+on screen — which means nearly every seeded issue reads as overdue. Run without
+the profile for realistic deadlines, at the cost of not being able to log in.
+
+Seeded logins, all with the password passed above:
+
+| Role | Email |
+|---|---|
+| ADMIN | `commissioner@civictrack.example` |
+| SUPERVISOR | `head.roads@civictrack.example` (and one per department, plus four ward officers) |
+| STAFF | `crew.roads@civictrack.example`, `crew.water@`, `crew.sanitation@` |
+
+There is no seeded citizen login — citizens in the corpus have no password.
+Register at `/register` to exercise `/me/reports`. Reporting itself needs no
+account at all (DD-017).
+
+## Testing
+
+```bash
+cd backend  && mvn clean test    # 162 integration and unit tests, Testcontainers
+cd frontend && npm run test      # 53 unit tests
+cd frontend && npm run lint      # includes the Leaflet import boundary rule
+```
+
+**Always `mvn clean test`, never incremental.** A stale `target/` produced two
+false diagnoses of a working query and cost most of an afternoon; DD-027 records
+what happened. Likewise, restart `next start` after `npm run build` — a stale
+server serves old chunks and the failure looks like an application bug.
+
+`tools/` holds four harnesses that check what unit tests structurally cannot,
+because they need the running server: the API contract against the declared
+TypeScript types, the transition table, the action rendered at each lifecycle
+state, and a runtime-error sweep of every route. See `tools/README.md`; each one
+exists because it caught a bug a passing suite had endorsed.
 
 ## Running the demo profile
 

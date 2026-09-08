@@ -93,14 +93,25 @@ public class IssueLifecycleService {
                 context(issue).note(note).build());
     }
 
+    /**
+     * One slice of the caller's own queue.
+     *
+     * <p>The department and ward scope come from the actor's token; the tab is
+     * a view preference on top of that scope and can never widen it. That
+     * ordering matters: {@code tab=all} means "everything in my scope", not
+     * "everything".
+     */
     @Transactional(readOnly = true)
-    public List<Issue> queue(Actor actor, int limit, int offset) {
+    public List<IssueRepository.QueueRow> queue(Actor actor, QueueTab tab, int limit, int offset) {
         // Administrators see the whole city; everybody else sees their own
         // scope, applied in SQL rather than by filtering afterwards so that
         // paging returns a full page of things the caller may actually act on.
         UUID departmentId = actor.isAdmin() ? null : actor.departmentId();
         UUID wardId = actor.isAdmin() ? null : actor.wardId();
-        return issues.findQueue(departmentId, wardId, limit, offset);
+        UUID assignedTo = tab == QueueTab.MINE ? actor.id() : null;
+        boolean unassignedOnly = tab == QueueTab.UNASSIGNED;
+        return issues.findQueueRows(departmentId, wardId, assignedTo, unassignedOnly,
+                                    limit, offset);
     }
 
     @Transactional(readOnly = true)

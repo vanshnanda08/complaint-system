@@ -33,6 +33,7 @@ public record IssueDto(
         Instant lastReportedAt,
         Instant dueAt,
         long pausedSeconds,
+        Instant effectiveDeadline,
         int escalationLevel,
         UUID assignedTo,
         Instant resolvedAt,
@@ -47,7 +48,13 @@ public record IssueDto(
                 issue.getReportCount(), issue.getDistinctReporterCount(),
                 issue.isNeedsReview(), issue.getReviewReason(),
                 issue.getFirstReportedAt(), issue.getLastReportedAt(), issue.getDueAt(),
-                issue.getPausedSeconds(), issue.getEscalationLevel(), issue.getAssignedTo(),
+                issue.getPausedSeconds(),
+                // due_at + paused_seconds: the deadline as it is actually judged.
+                // Computed here so no client has to re-derive the SLA clock --
+                // a second definition of it in TypeScript is a second definition
+                // that can drift. SlaService.effectiveDeadline is the same sum.
+                issue.getDueAt().plusSeconds(issue.getPausedSeconds()),
+                issue.getEscalationLevel(), issue.getAssignedTo(),
                 issue.getResolvedAt(), issue.getReopenCount());
     }
 }

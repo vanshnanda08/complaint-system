@@ -554,6 +554,72 @@ TanStack Query for fetching, React Hook Form + Zod for the report form. No
 <form> tags posting to the server; use event handlers.
 ```
 
+
+### Phase 4 as delivered
+
+The prompt above is the original brief. What was executed was an amended version
+of it, in five stages, and the difference matters to anybody reading this later:
+
+**Stage 0 — the public read API, which the brief did not mention.** The frontend
+needs ten endpoints that did not exist. `GET /api/v1/public/issues`, `/bbox`,
+`/{id}`, `/{id}/reports`, `/{id}/history`, `/categories`, `/wards`,
+`/dashboard/summary`, `/me/reports`, and — added during the phase because
+`/report/success/[ref]` cannot work without it —
+`GET /api/v1/public/issues/by-ref/{publicRef}`. Public DTOs are separate records
+from the staff ones (DD-023), a `Department` entity was created, and the staff
+queue gained the two tabs blueprint §3.14 specifies.
+
+**Stages 1–4 — tokens and styleguide, shared components, the twelve screens,
+then state and auth.** As the brief describes, with these corrections found
+against the running code:
+
+- The endpoint is `submit-for-verification`, not `resolve`. The blueprint's §5
+  is stale.
+- The cluster decisions are `SPLIT_LOW_CONF` and `SPLIT_EXTENT_CAPPED`, not the
+  blueprint's `NEW_LOW_CONF` / `NEW_ISSUE_EXTENT_CAP`, and there is a sixth,
+  `MANUAL`.
+- There are nine statuses and eight colour tokens; three share `--st-active` and
+  are separated by glyph and word (DD-032 neighbours).
+- The 120 KB JS budget was unreachable — the framework baseline alone exceeds it
+  (DD-031). What that budget was protecting is intact and measured: Leaflet is
+  0 KB on the composer's happy path.
+
+**Decisions recorded:** DD-023 through DD-038.
+
+### Manual verification — phase 4
+
+Standing rule 5. With `docker compose up -d`, the backend on the `demo` profile
+and the frontend on `:3000`:
+
+1. **`/`** — the hero shows a real overdue count. View source: the number is in
+   the initial HTML, not filled in after hydration.
+2. **`/report`** — allow location. Take a photo; the caption states the
+   compressed size and says it is exactly what gets sent. Submit. The count on
+   the result screen animates once, and only once.
+3. **Reload the result screen.** It must still render — that is the `by-ref`
+   endpoint, and its absence is why the screen would otherwise break on a
+   refresh or a shared link.
+4. **`/report` with location denied** in browser settings — the automatic fix is
+   discarded, a map appears, and a pin must be placed by hand.
+5. **`/issues/{id}/cluster`** on an issue with several reports — five layers:
+   report pins, an accuracy circle each, the centroid crosshair, the dashed
+   merge radius, the dotted extent cap. Then open a single-report issue: it must
+   read "One report. Merge radius 25 m, no cluster uncertainty yet", not look
+   broken.
+6. **Sign in** as `crew.roads@civictrack.example` and open an issue from
+   `/staff/queue`. Exactly one action is offered. Acknowledge it, and note that
+   the next screen offers **nothing** and says it is waiting for a supervisor to
+   assign — that is the transition table, not a bug (DD-035).
+7. **DevTools → Application.** `civictrack_refresh` is httpOnly. localStorage
+   and sessionStorage contain no token.
+8. **Screenshot `/issues` and `/staff/queue` in greyscale.** If two statuses
+   become indistinguishable, the encoding is wrong.
+9. **Resize to 360 px** on every screen. No horizontal scroll.
+10. **Tab through `/report`.** Every control takes focus with a visible ring;
+    the category grid is one tab stop, navigated with arrow keys.
+
+Automated equivalents of 5, 6 and the API contract live in `tools/`.
+
 ---
 
 ## Phase 5 — Deploy (Week 4b), month-1 milestone

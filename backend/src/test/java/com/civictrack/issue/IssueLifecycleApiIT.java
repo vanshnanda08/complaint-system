@@ -131,6 +131,21 @@ class IssueLifecycleApiIT extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("the staff issue view carries the deadline as it is actually judged")
+    void staffIssueCarriesEffectiveDeadline() throws Exception {
+        Issue issue = pothole();
+
+        // effectiveDeadline = dueAt + pausedSeconds. Without it on this DTO the
+        // staff work view has no deadline to render and re-deriving it in the
+        // client would be a second definition of the SLA clock.
+        mvc.perform(get("/api/v1/issues/{id}", issue.getId())
+                        .header(HttpHeaders.AUTHORIZATION, fixtures.bearer(roadsCrew)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.effectiveDeadline").exists())
+                .andExpect(jsonPath("$.effectiveDeadline").value(issue.getDueAt().toString()));
+    }
+
+    @Test
     @DisplayName("the staff queue shows only the caller's own department")
     void queueIsScopedToTheCallersDepartment() throws Exception {
         pothole();
