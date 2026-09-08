@@ -33,20 +33,34 @@
      Sans Devanagari exists as a sibling family, so a future Hindi or Punjabi
      interface is not a typographic redesign. */
 
-  --ink: #14181a;
-  --ink-muted: #5a6469;
-  --surface: #f7f8f7;
-  --surface-raised: #ffffff;
-  --rule: #d8dcda;
+  /* The brand accent. It is deliberately TEAL and not green.
+     `--st-resolved` is #15803d, and a brand green at the same hue means a
+     brand chip and a "resolved" badge are the same colour on the same page --
+     the one confusion this palette cannot afford, because green here is a
+     claim that a problem was fixed. Teal keeps the deep-green character and
+     moves the hue clear of it.
+     Brand colour marks identity and navigation only. It never encodes a
+     status, and it is never used on a tile whose number is a status. */
+  --brand-primary: #0f766e;
+  --brand-dark: #134e4a;
 
-  /* The ONLY saturated colour in the system.
-     Measured contrast against #F7F8F7 / #FFFFFF, sRGB:
-       new 7.12/7.58  active 6.29/6.70  pending 4.72/5.02  resolved 4.71/5.02
-       reopened 6.67/7.10  breached 6.08/6.47  closed 7.17/7.63
-       rejected 4.51/4.80
-     All clear WCAG AA for normal text on both surfaces. `rejected` clears it
-     by 0.01 and has no margin: darken it before reusing it anywhere smaller
-     than 13px. */
+  --ink: #111827;
+  /* #6B7280 measured 4.39 on --surface and failed AA. Darkened to 5.44. */
+  --ink-muted: #5B6472;
+  --surface: #F3F4F6;
+  --surface-raised: #FFFFFF;
+  --rule: #E5E7EB;
+
+  /* The saturated colours that encode status.
+     Re-measured after the surface moved from #F7F8F7 to #F3F4F6 -- a darker
+     ground lowers every one of these, and `rejected` fell through AA at 4.36.
+     Contrast against #F3F4F6 (surface) / #FFFFFF (raised), sRGB:
+       new 6.89/7.58  active 6.09/6.70  pending 4.56/5.02  resolved 4.56/5.02
+       reopened 6.46/7.10  breached 5.88/6.47  closed 6.93/7.63
+       rejected 5.28/5.81
+     All clear WCAG AA on both surfaces. `pending` and `resolved` sit at 4.56
+     with almost no margin: darken them before moving the surface again or
+     using them below 13px. */
   --st-new: #475569;
   --st-active: #1d4ed8;
   --st-pending: #b45309;
@@ -54,7 +68,7 @@
   --st-reopened: #6d28d9;
   --st-breached: #b91c1c;
   --st-closed: #57534e;
-  --st-rejected: #78716c;
+  --st-rejected: #6b645f;  /* was #78716c -- 4.36 on the new surface, failed AA */
 
   --font-stack-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
   --font-stack-mono: var(--font-plex-mono), ui-monospace, "SF Mono", monospace;
@@ -68,12 +82,63 @@
   --size-ref: 0.875rem;      --lh-ref: 1.25rem;
 
   /* Layout. Base unit 4px; sections 32px apart, related items 8px.
-     No radius above 4px, and no shadow anywhere except the sticky header. */
+     Radius was capped at 4px in the original token set. This set raises it to
+     16px deliberately; the cap was a house style, not an accessibility rule. */
+  /* The one filled tile on the dashboard. Its fill is --st-breached, because
+     the number on it is a breach count -- an emphasised tile still obeys the
+     rule that colour encodes status, so this is red and never brand green.
+     Foreground has to be a token rather than a literal `white`: in dark mode
+     the fill inverts, and white on the dark theme's lighter red measures 2.28,
+     which fails. Light 6.47/5.30, dark 9.16/6.93. */
+  --tile-emph-bg: #b91c1c;
+  --tile-emph-ink: #ffffff;
+  --tile-emph-ink-muted: #fee2e2;
+
   --measure-prose: 68ch;
   --measure-form: 44ch;
-  --radius: 4px;
-  --radius-sm: 2px;
+  --radius: 16px;
+  --radius-sm: 8px;
   --hit-min: 48px;     /* one-handed outdoor use, blueprint 8 */
+  --sidebar-width: 260px;
+}
+
+/* Dark theme.
+   Blueprint 1.7 argued against a second palette on the grounds that it is a
+   second palette to keep accessible. That argument was right, and this block
+   is what paying it looks like: the status colours MUST be redefined here.
+   Left at their light values they measured 1.92-3.70 against these surfaces
+   -- every one of the eight below AA, on the exact colours the whole system
+   exists to make readable. The values below are the same eight hues lifted
+   for a dark ground, re-measured against #111827 / #1F2937:
+     new 8.37/6.93  active 7.42/6.14  pending 9.63/7.97  resolved 9.53/7.88
+     reopened 8.57/7.09  breached 7.77/6.43  closed 8.24/6.82
+     rejected 9.34/7.73
+   Hue order is preserved, so the greyscale check still separates them and the
+   three statuses that share --st-active still share it. */
+.dark {
+  color-scheme: dark;
+
+  --ink: #F9FAFB;
+  --ink-muted: #9CA3AF;
+  --surface: #111827;
+  --surface-raised: #1F2937;
+  --rule: #374151;
+
+  --brand-primary: #2dd4bf;
+  --brand-dark: #0d9488;
+
+  --st-new: #a8b3c4;
+  --st-active: #7ea6ff;
+  --st-pending: #f0b45f;
+  --st-resolved: #5fd48b;
+  --st-reopened: #c0a6ff;
+  --st-breached: #ff8a80;
+  --st-closed: #b5b0aa;
+  --st-rejected: #c2bbb4;
+
+  --tile-emph-bg: #7f1d1d;
+  --tile-emph-ink: #fef2f2;
+  --tile-emph-ink-muted: #fecaca;
 }
 
 /* --------------------------------------------------------------------------
@@ -116,6 +181,7 @@
   --radius: 2px;
   --radius-sm: 1px;
   --hit-min: 48px;
+  --sidebar-width: 260px;
 }
    -------------------------------------------------------------------------- */
 
@@ -161,6 +227,7 @@
   --radius: 4px;
   --radius-sm: 2px;
   --hit-min: 48px;
+  --sidebar-width: 260px;
 }
    -------------------------------------------------------------------------- */
 
@@ -176,6 +243,13 @@
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
   --color-rule: var(--rule);
+  
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-dark: var(--brand-dark);
+
+  --color-tile-emph-bg: var(--tile-emph-bg);
+  --color-tile-emph-ink: var(--tile-emph-ink);
+  --color-tile-emph-ink-muted: var(--tile-emph-ink-muted);
 
   --color-st-new: var(--st-new);
   --color-st-active: var(--st-active);
@@ -217,15 +291,22 @@
 
   --radius-token: var(--radius);
   --radius-token-sm: var(--radius-sm);
+  /* NO --sidebar-width here. @theme inline emits its own --sidebar-width on
+     :root, so `--sidebar-width: var(--sidebar-width)` was a self-reference and
+     resolved to nothing -- it shipped in the built CSS exactly like that.
+     The :root token above is a plain custom property; read it with
+     var(--sidebar-width). */
 }
 
 /* --------------------------------------------------------------------------
    Base
    -------------------------------------------------------------------------- */
 html {
-  /* No dark mode. Blueprint 1.7 records the reason: a second palette to keep
-     accessible, for no established user need. Declaring the scheme stops the
-     browser from helpfully inverting form controls on a dark-mode device. */
+  /* Declared light, and overridden to dark by `.dark` above -- NOT
+     `light dark`. `light dark` hands the choice to the operating system, so a
+     user on a dark-mode phone who picks light mode in this app gets a light
+     page with dark-rendered form controls on it. The scheme has to follow the
+     app's own theme state, which is what the class does. */
   color-scheme: light;
   -webkit-text-size-adjust: 100%;
 }

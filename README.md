@@ -34,7 +34,10 @@ DTO scattered across three.
 | Container runtime | any Docker-compatible | `brew install colima docker docker-compose` |
 
 There is no substitute for the container runtime: the integration tests run
-against a real `postgis/postgis:16-3.4`, and H2 has no PostGIS.
+against a real `postgis/postgis:17-3.4`, and H2 has no PostGIS. That tag
+tracks the deployed database's Postgres major (Supabase, PostgreSQL 17);
+PostGIS is one minor ahead because no `17-3.3` image is published. See
+`IntegrationTestBase` for why that gap is acceptable and what it does not cover.
 
 If you use Colima rather than Docker Desktop, start it once per boot and link
 the compose plugin once, ever:
@@ -161,6 +164,40 @@ Seeded logins, all with the password passed above:
 There is no seeded citizen login — citizens in the corpus have no password.
 Register at `/register` to exercise `/me/reports`. Reporting itself needs no
 account at all (DD-017).
+
+## Documents
+
+| | |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Component, ER, state-machine, ingest-sequence and escalation diagrams, each with the reasoning it encodes |
+| [docs/MONTH-1-STATUS.md](docs/MONTH-1-STATUS.md) | What works, what is stubbed, and what went wrong — written to be checkable |
+| [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) | Forty decisions: the defect, why it mattered, the fix, the alternative rejected |
+| [docs/civictrack-claude-code-prompts.md](docs/civictrack-claude-code-prompts.md) | Authoritative phase numbering and per-phase verification steps |
+| [docs/phase-5-remaining.md](docs/phase-5-remaining.md) | **Start here to continue.** The five outstanding phase-5 items, plus the traps already paid for |
+
+## Deployed
+
+| | |
+|---|---|
+| Frontend | https://civic-track-six.vercel.app |
+| API | https://civictrack-api.onrender.com |
+| API docs | https://civictrack-api.onrender.com/swagger-ui/index.html |
+
+Backend on Render (Docker, free tier), database on Supabase, frontend on Vercel.
+The deployed corpus is the seeded 2,000 reports across ~800 issues.
+
+Two things about that stack that are not obvious and have both bitten once:
+
+**Connect through Supabase's SESSION POOLER, not the direct endpoint.** The
+direct host `db.<ref>.supabase.co` is IPv6-only and Render's free tier has no
+IPv6 route, so it fails with "Network is unreachable". Use
+`aws-0-<region>.pooler.supabase.com:5432` with user `postgres.<project-ref>`.
+Not port 6543 — that is transaction mode and breaks Hibernate's prepared
+statements. The port is not the tell; the hostname is (DD-040).
+
+**Render's free tier sleeps after 15 minutes idle**, so the first request after
+a quiet spell takes roughly a minute. The CDS archive gets the application
+itself to ~3.5 s; the rest is Render starting the container.
 
 ## Testing
 

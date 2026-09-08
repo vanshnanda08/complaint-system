@@ -16,11 +16,18 @@ export function PageShell({
   wide?: boolean;
 }) {
   return (
-    <>
+    <div className="flex min-h-screen flex-col md:flex-row">
       <SiteHeader />
-      <main className="mx-auto px-4 py-6" style={{ maxWidth: wide ? 1100 : 760 }}>
+      {/* `min-w-0` so a wide table or a long unbroken string inside `main`
+          cannot force the flex row wider than the viewport -- the default
+          `min-width: auto` on a flex item is what turns that into a
+          horizontal scrollbar on the whole page. */}
+      <main
+        className="flex-1 min-w-0 w-full mx-auto px-4 py-6 md:px-8"
+        style={{ maxWidth: wide ? 1100 : 760 }}
+      >
         {children}
       </main>
-    </>
+    </div>
   );
 }

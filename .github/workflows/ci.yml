@@ -1,0 +1,134 @@
+name: CI
+
+# Every push and every pull request. The full Testcontainers suite runs on both,
+# because the failures this project cares about -- a spatial query regressing to
+# a sequential scan, a concurrent merge creating a duplicate issue, a transition
+# the state machine should have refused -- are invisible to anything that does
+# not talk to a real PostGIS.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+concurrency:
+  # A newer push supersedes an in-flight run on the same ref. The suite takes
+  # minutes and nobody is served by finishing a run for a commit that has
+  # already been replaced.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — 166 tests against real PostGIS
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      # The PostGIS image is ~150 MB and is pulled on every run otherwise.
+      # Caching the saved tar and loading it is faster than a registry pull and
+      # removes a network dependency that has nothing to do with our code.
+      - name: Cache the PostGIS image
+        id: postgis-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/postgis-image
+          key: postgis-17-3.4-v1
+
+      - name: Load or pull PostGIS
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.cache/postgis-image
+          TAR=~/.cache/postgis-image/postgis-17-3.4.tar
+          if [ -f "$TAR" ]; then
+            echo "Loading cached image"
+            docker load -i "$TAR"
+          else
+            echo "Pulling and caching"
+            docker pull postgis/postgis:17-3.4
+            docker save postgis/postgis:17-3.4 -o "$TAR"
+          fi
+
+      # `mvn clean` is not optional here, and is not about CI hygiene.
+      # A stale target/ silently served old compiled SQL during phase 4 and
+      # produced two wrong diagnoses of a working query (DD-027). The habit is
+      # enforced rather than remembered.
+      - name: Build and test
+        run: mvn -B clean test
+        working-directory: backend
+
+      - name: Publish test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-reports
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+  frontend:
+    name: Frontend — lint, types, unit tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+        working-directory: frontend
+
+      # Lint before tests: it carries the rule confining Leaflet to one module,
+      # and a violation there breaks the server render of pages that have
+      # nothing visibly to do with maps.
+      - run: npm run lint
+        working-directory: frontend
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: frontend
+
+      - run: npm run test
+        working-directory: frontend
+
+      - run: npm run build
+        working-directory: frontend
+        env:
+          # The build prerenders the landing page, whose hero fetch is wrapped
+          # in a try/catch and degrades. A placeholder keeps the build
+          # deterministic and offline rather than depending on the deployed API.
+          API_BASE: http://localhost:8080/api/v1
+          NEXT_PUBLIC_API_BASE: http://localhost:8080/api/v1
+
+  deploy:
+    name: Trigger Render deploy
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the Render deploy hook
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "${HOOK:-}" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL is not set; skipping deploy." >&2
+            echo "Add it under Settings -> Secrets and variables -> Actions." >&2
+            exit 0
+          fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+          echo "Render deploy triggered."
+      # Vercel deploys from its own Git integration on push to main, so there
+      # is deliberately nothing here for the frontend.

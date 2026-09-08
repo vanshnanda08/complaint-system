@@ -1496,6 +1496,194 @@ against a persistent database rather than a fresh one.
 
 ---
 
+## DD-040 — "Direct connection, never the pooler" was half right, and the half that was missing cost a day
+
+**The written rule.** `civictrack-claude-code-prompts.md` phase 5 says, in bold:
+
+> connect to the DIRECT endpoint (port 5432), never the transaction pooler
+> (6543). Hibernate uses server-side prepared statements, which break under
+> PgBouncer/Supavisor transaction pooling; and our entire clustering concurrency
+> design rests on `pg_advisory_xact_lock` and `FOR UPDATE` row locks.
+
+Every word of that reasoning is correct. The instruction it produces is not.
+
+**What actually happened.** Supabase's direct host, `db.<ref>.supabase.co`, has
+**no A record** — it is IPv6-only, and has been since Supabase moved IPv4 to a
+paid add-on. Render's free tier has no IPv6 egress. The application therefore
+failed on startup with:
+
+```
+Caused by: java.net.SocketException: Network is unreachable
+```
+
+Not "connection refused", not a timeout, not an authentication failure. That
+specific message, from a host with an AAAA record and no A record, is the
+signature.
+
+**The fix, and why it does not violate the rule.** Supavisor has two modes, and
+the prompt conflated them with a port number:
+
+| Mode | Host | Port | Session semantics |
+|---|---|---|---|
+| Direct | `db.<ref>.supabase.co` | 5432 | Full — but **IPv6 only** |
+| Session pooler | `aws-0-<region>.pooler.supabase.com` | **5432** | Full: one backend per client session |
+| Transaction pooler | `aws-0-<region>.pooler.supabase.com` | 6543 | **Broken for us** — multiplexed per transaction |
+
+The deployment uses the **session pooler**. It is IPv4-reachable, and it keeps
+exactly the properties the rule exists to protect: a dedicated backend per
+client session, so server-side prepared statements survive and
+`pg_advisory_xact_lock` and `FOR UPDATE` behave as they do on a direct
+connection. The username changes to `postgres.<project-ref>`, which is how
+Supavisor routes to the right project.
+
+**Why this entry exists rather than a quiet config change.** The rule as written
+is memorable and wrong, and it was followed correctly twice — once at first
+deploy, and again after a password rotation, because Supabase's own UI shows
+the direct string by default and that is precisely the page somebody lands on
+after resetting a password. Both times it produced the same unreachable-network
+failure, and the second time it took down a working deployment.
+
+**The rule, corrected: the port is not the tell, the hostname is.**
+
+- `db.<ref>.supabase.co` — direct, IPv6 only, unusable from an IPv4-only host.
+- `...pooler.supabase.com:6543` — transaction mode, breaks Hibernate. Never.
+- `...pooler.supabase.com:5432` — session mode. **This one.**
+
+The phase 5 prompt has been amended to say this. `backend/.env.seed.example`
+carries the pooler host in a comment for the same reason.
+
+**A note for anyone moving off the free tier.** Buying Supabase's IPv4 add-on,
+or deploying somewhere with IPv6 egress, makes the direct host work and removes
+the pooler from the path entirely. That is the better arrangement if it is
+available: one fewer component between the application and its database, and
+one fewer thing to get subtly wrong.
+
+
+---
+
+## DD-041 — A dark theme is a second status palette, not a second background colour
+
+**The defect.** A dark theme was added by redefining five tokens: `--ink`,
+`--ink-muted`, `--surface`, `--surface-raised` and `--rule`. The eight
+`--st-*` status colours were left at their light-theme values. Measured
+against the new dark surfaces they came out between **1.92 and 3.70** — every
+one of the eight below WCAG AA, several close to invisible.
+
+**Why it matters.** Those eight colours are not decoration. They are the
+mechanism by which this interface says what state an issue is in, and blueprint
+§1.3's entire argument is that they clear AA on the surfaces they sit on. A
+dark mode that keeps the ink legible and lets the status colours fall through
+AA has broken the one thing the palette exists to do, and it does it silently:
+nothing fails, no test notices, the page simply becomes unreadable for the
+people the contrast targets are for.
+
+**The fix.** `.dark` redefines all eight, re-measured against `#111827` and
+`#1F2937` (7.42–9.63 on surface, 6.14–7.97 on raised). Hue order is preserved,
+so the greyscale check still separates them and the three statuses that
+deliberately share `--st-active` still share it. The emphasised dashboard tile
+needed the same treatment: white on the dark theme's lighter red measures 2.28,
+so its foreground is a token (`--tile-emph-ink`) that flips with the theme
+rather than a literal `white`.
+
+**The alternative rejected.** Deriving the dark values programmatically, with a
+filter or a colour-space transform. It produces numbers nobody has measured,
+and the whole point of the token block is that the contrast figures in its
+comment were computed rather than assumed.
+
+**The wider point.** Blueprint §1.7 argued against a dark theme on the grounds
+that it is a second palette to keep accessible. That argument was correct. This
+entry is what paying that cost looks like, and the cost is real: every future
+change to a status colour is now two changes and sixteen measurements.
+
+---
+
+## DD-042 — `@theme inline` cannot alias a token to its own name
+
+**The defect.** `@theme inline { --sidebar-width: var(--sidebar-width); }` was
+added alongside the working `--color-surface: var(--surface)` entries, by
+analogy. It shipped into the production stylesheet verbatim as
+`--sidebar-width:var(--sidebar-width)` — a self-reference, invalid at
+computed-value time, resolving to nothing.
+
+**Why it matters.** It failed silently and in the ordinary direction: the
+component that should have consumed the token had a hardcoded `260px` instead,
+so the page looked right and the token was simply dead. A dead token is worse
+than no token, because the next person changes it and nothing moves.
+
+**The fix.** The `@theme` entry is gone. The working entries all *rename* —
+`--color-surface` reads `--surface`, a different name — and that is why they
+resolve. The `:root` custom property is read directly via
+`md:w-[var(--sidebar-width)]`, and the component no longer carries its own copy
+of the number.
+
+**How it was found.** Not by the build, which was green, and not by looking at
+the page, which was correct. By grepping the emitted CSS in `.next/static` for
+the token's own name. Checking what the toolchain produced rather than what it
+reported is the only thing that catches this class of defect.
+
+---
+
+## DD-043 — Which of two Tailwind background utilities wins is decided by the stylesheet, not by the class attribute
+
+**The defect.** The navigation factored its shared row styling into a constant
+that included `bg-transparent`, so that `<button>` rows would not show a
+user-agent background. Active links appended `bg-brand-dark` after it:
+
+```
+className={`${ROW} ${isActive ? "bg-brand-dark text-white" : "..."}`}
+```
+
+The active item rendered with a transparent background and white text — white
+on white. In light mode only. On the page it was the current page of.
+
+**Why it matters.** Reading the class attribute left to right suggests
+`bg-brand-dark` wins because it comes last. It does not. Both utilities are
+single-class selectors of equal specificity, so the winner is whichever Tailwind
+emitted later in the stylesheet, which is a property of Tailwind's ordering and
+not of this file at all. The failure is invisible to TypeScript, to ESLint, to
+`next build`, and to the route sweep, because the element is present, focusable,
+and correctly labelled — it just cannot be seen.
+
+**The fix.** The shared constant carries no background at all. Each caller sets
+exactly one, so there is nothing to resolve. Verified by reading
+`getComputedStyle(...).backgroundColor` off the running page and asserting it is
+`rgb(19, 78, 74)` rather than `rgba(0, 0, 0, 0)`.
+
+**The alternative rejected.** `!bg-brand-dark`. It would have worked, and it
+would have left the collision in place for the next person to hit with a
+different pair of utilities.
+
+**The general rule.** Never rely on class-attribute order to resolve two
+utilities that set the same CSS property. Compose so that only one is ever
+present.
+
+---
+
+## DD-044 — A dimmed empty state is less visible, which is the opposite of the point
+
+**The defect.** The dashboard's not-yet-measured tiles were restyled with
+`opacity-40 grayscale`. Composited against the surface, their text measured
+**1.66:1**.
+
+**Why it matters.** §3.8's reason for listing unbuilt metrics at all is that
+what the dashboard does not measure should be as visible as what it does. Fading
+them to illegibility inverts that. The same change replaced each tile's
+explanatory sentence with `"-"`, and a dash in a number's position is read as a
+number — specifically as zero, which is a claim about the world that the
+dashboard is not in a position to make.
+
+**The fix.** Not-yet-measured tiles are dashed-bordered rather than faded, with
+their text at full contrast, and they carry the sentence again. The same
+restoration applies to a null `overdueCount`, which renders "could not be
+computed just now" — the nullable field exists precisely so one failing
+aggregate cannot blank the page, and collapsing it to a dash throws that away.
+
+**The alternative rejected.** Hiding the unbuilt tiles until they work. That is
+the honest-looking option that is actually the dishonest one: a dashboard with
+four tiles looks complete, and a reader has no way to know eight are missing.
+
+---
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.

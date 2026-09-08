@@ -68,6 +68,32 @@ public class SeedDataGenerator implements CommandLineRunner {
             return;
         }
 
+        // Refuse to seed a database that already holds issues.
+        //
+        // This generator is a CommandLineRunner, so it fires on every boot the
+        // `seed` profile is active for -- and a deployed instance restarts far
+        // more often than anybody expects. Render's free tier spins down after
+        // fifteen minutes idle and boots again on the next request, so a
+        // profile left switched on would add another full corpus every time
+        // somebody visited the site.
+        //
+        // The damage would not be obvious either: the clustering engine would
+        // merge the second corpus into the first wherever they overlap, so
+        // report counts and distinct-reporter counts would inflate, priority
+        // scores would climb, and the ground-truth labels written alongside
+        // the first run would silently stop describing the data. Phase 8's
+        // evaluation reads those labels.
+        //
+        // `force` exists for the deliberate case -- reseeding a scratch
+        // database -- and has to be asked for by name.
+        long existing = jdbcTemplate.queryForObject("SELECT count(*) FROM issues", Long.class);
+        if (existing > 0 && !props.force()) {
+            log.warn("Seed skipped: {} issues already exist. "
+                     + "Set civictrack.seed.force=true to seed anyway (it will ADD a second "
+                     + "corpus, not replace the first).", existing);
+            return;
+        }
+
         log.info("Starting Seed Data Generation... Corpus size: {}", props.corpusSize());
 
         Random random = new Random(props.randomSeed());

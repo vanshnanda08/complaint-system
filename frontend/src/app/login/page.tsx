@@ -59,43 +59,45 @@ function LoginInner() {
 
   return (
     <PageShell>
-      <div style={{ maxWidth: "var(--measure-form)" }}>
-        <h1 className="text-display">Sign in</h1>
+      <div className="flex flex-col items-center justify-center min-h-[70vh]">
+        <div className="w-full" style={{ maxWidth: "var(--measure-form)" }}>
+          <h1 className="text-display text-center">Sign in</h1>
 
-        <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-5">
-          <TextField
-            label="Email"
-            type="email"
-            autoComplete="email"
-            error={formState.errors.email?.message}
-            {...register("email")}
-          />
-          <TextField
-            label="Password"
-            type="password"
-            autoComplete="current-password"
-            error={formState.errors.password?.message}
-            {...register("password")}
-          />
+          <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-5">
+            <TextField
+              label="Email"
+              type="email"
+              autoComplete="email"
+              error={formState.errors.email?.message}
+              {...register("email")}
+            />
+            <TextField
+              label="Password"
+              type="password"
+              autoComplete="current-password"
+              error={formState.errors.password?.message}
+              {...register("password")}
+            />
 
-          {error && (
-            <p className="text-meta" style={{ color: "var(--st-breached)" }} role="alert">
-              {error}
-            </p>
-          )}
+            {error && (
+              <p className="text-meta text-center" style={{ color: "var(--st-breached)" }} role="alert">
+                {error}
+              </p>
+            )}
 
-          <Button type="submit" disabled={formState.isSubmitting}>
-            {formState.isSubmitting ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
+            <Button type="submit" disabled={formState.isSubmitting}>
+              {formState.isSubmitting ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
 
-        <p className="mt-6 text-dense">
-          No account?{" "}
-          <Link href="/register" className="underline text-ink">
-            Create one
-          </Link>
-          . You can report a problem without one.
-        </p>
+          <p className="mt-6 text-dense text-center">
+            No account?{" "}
+            <Link href="/register" className="underline text-ink">
+              Create one
+            </Link>
+            . You can report a problem without one.
+          </p>
+        </div>
       </div>
     </PageShell>
   );
