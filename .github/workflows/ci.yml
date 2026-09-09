@@ -1,5 +1,12 @@
 name: CI
 
+# Action majors are pinned and bumped deliberately. checkout, setup-java and
+# setup-node are on v5 because their v4 releases target Node 20, which GitHub
+# has deprecated -- the runner force-runs them on Node 24 and annotates every
+# run with a warning. cache and upload-artifact stay on v4: their v5 lines
+# change behaviour rather than just the runtime, and this is not the change to
+# do that in.
+
 # Every push and every pull request. The full Testcontainers suite runs on both,
 # because the failures this project cares about -- a spatial query regressing to
 # a sequential scan, a concurrent merge creating a duplicate issue, a transition
@@ -24,11 +31,45 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
+    env:
+      # Testcontainers' Ryuk is a sidecar container whose only job is to reap
+      # containers a crashed test run left behind. It is worth having on a
+      # developer's machine, which is long-lived; it is worth nothing on a
+      # GitHub runner, which is destroyed along with everything on it the
+      # moment the job ends.
+      #
+      # It is disabled here because it is the strongest candidate for why this
+      # job has failed on every run. The evidence, in order:
+      #
+      #  - The suite passes on macOS arm64, on Linux arm64 and on Linux amd64,
+      #    all against the same postgis/postgis:17-3.4 image, under TZ=UTC and
+      #    as root. So the failure is not in the tests and not the platform.
+      #  - Reproducing it locally with Ryuk reachable but slow produced
+      #    EXACTLY the signature this job reports: "Tests run: 166,
+      #    Errors: 121", BUILD FAILURE, surefire reports written (so an
+      #    artifact is still uploaded), exit code 1. Every error was a context
+      #    that never started, not an assertion.
+      #  - The "Load or pull PostGIS" step below caches postgis and loads it
+      #    from a tar on every run after the first. Ryuk is NOT cached, so from
+      #    run two onwards it is the only Docker Hub pull this job makes -- and
+      #    GitHub-hosted runners come from shared address space subject to
+      #    Docker Hub's anonymous pull limits. A run that pulls exactly one
+      #    image and fails on that image fits.
+      #
+      # Stated as a hypothesis rather than a diagnosis, because the run log is
+      # readable only with admin rights on the repository and this was reasoned
+      # from the outside. If the job still fails, the summary step below now
+      # prints the reason onto the run page and that is the thing to read next.
+      #
+      # Worth doing either way: a sidecar pulled from a third-party registry on
+      # every CI run is a dependency this job does not need.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -139,9 +180,9 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm

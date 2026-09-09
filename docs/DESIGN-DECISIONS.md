@@ -1963,6 +1963,59 @@ runs.
 
 ---
 
+## DD-051 — The CI failure was almost certainly a sidecar the job did not need
+
+**The state of it.** The backend job had failed on every run since CI was
+added. The log is readable only with admin rights on the repository, so this
+was reasoned from outside.
+
+**What was ruled out, by running rather than by thinking.** 166/166 pass on
+macOS arm64; on Linux arm64 as root under `TZ=UTC`; and on **Linux amd64**,
+the runner's architecture, under emulation. All against
+`postgis/postgis:17-3.4`, the tag CI uses. `application-deploy.yml` needs no
+environment variables. The tests are not the problem and neither is the
+platform.
+
+**The lead came from a failed experiment.** The amd64 run failed first time
+with `Can not connect to Ryuk at host.docker.internal:32984` — Ryuk took sixty
+seconds to start under emulation and then was unreachable through my nested
+Docker networking. That was my harness, not a reproduction, and reporting it as
+the cause would have been wrong. But its **signature** was worth more than the
+experiment: `Tests run: 166, Errors: 121`, `BUILD FAILURE`, surefire reports
+still written so an artifact still uploads, exit code 1 — with every error a
+Spring context that never started rather than an assertion. That is exactly
+what the CI run page shows: one artifact, `Process completed with exit code 1`,
+failed in 1m 05s.
+
+**Why Ryuk specifically.** The `Load or pull PostGIS` step caches the image and
+loads it from a tar on every run after the first. Ryuk is not cached. So from
+run two onward, **Ryuk is the only Docker Hub pull the job makes** — and
+GitHub-hosted runners come from shared address space subject to Docker Hub's
+anonymous pull limits. A job that pulls exactly one image and fails on that one
+image fits the shape.
+
+**The fix.** `TESTCONTAINERS_RYUK_DISABLED: "true"` on the backend job. Ryuk's
+only job is reaping containers a crashed run left behind — valuable on a
+long-lived developer machine, worth nothing on a runner that is destroyed with
+everything on it when the job ends. Verified the suite still passes with it
+off: 166/166 locally with `TESTCONTAINERS_RYUK_DISABLED=true`.
+
+**Stated as a hypothesis, not a diagnosis.** It has not been confirmed against
+the actual log, because that log cannot be read without repository admin
+rights. If the job still fails, the summary step added in DD-048 now prints the
+reason onto the run page, and that is what to read next. The change stands on
+its own merits regardless: a sidecar pulled from a third-party registry on
+every CI run is a dependency this job never needed.
+
+**Also bumped:** `actions/checkout`, `actions/setup-java` and
+`actions/setup-node` to v5. Their v4 releases target Node 20, which GitHub has
+deprecated, and the runner was annotating every run about it. `cache` and
+`upload-artifact` stay on v4 deliberately — their v5 lines change behaviour
+rather than just the runtime, and a CI investigation is the wrong place to take
+that on.
+
+---
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.
