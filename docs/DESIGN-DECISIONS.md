@@ -1911,6 +1911,58 @@ tighter cron.
 
 ---
 
+## DD-050 — Two harnesses that stopped working once the corpus shrank
+
+**The defect.** `table.mjs` and `uiwalk.mjs` both selected the issue they walk
+with
+
+```js
+GET /public/issues?status=NEW&category=POTHOLE&limit=5
+const id = list.items[0].id;
+```
+
+Both then walk that issue to PENDING_VERIFICATION and leave it there. So each
+run **consumes** a NEW POTHOLE issue. At 800 issues that was invisible. At 110
+the pool ran dry within a handful of runs, `items[0]` became `undefined`, and
+the harness died with `Cannot read properties of undefined (reading 'id')` — a
+stack trace that says nothing about the actual problem, from a tool whose whole
+job is to say what is wrong.
+
+**Why it matters more than it looks.** These two are the only checks in the
+project that would catch a client offering a transition the server refuses —
+the DD-035 bug, which a green unit suite endorsed for a whole phase. A
+verification harness that stops working after it has been run a few times is
+not a verification harness, and the failure mode is the bad one: it looks like
+a broken tool rather than a broken system, so it gets skipped.
+
+**The fix.** `tools/pick.mjs`. It looks for a NEW issue anywhere in the
+department rather than in one category, and if the pool genuinely is empty it
+**creates** one instead of failing.
+
+Creating one has a wrinkle worth recording. A report needs coordinates inside a
+ward, and the easy source of a valid coordinate is an existing issue — but a
+report at an existing issue's location merges into it, which yields no NEW
+issue. So the location is borrowed from a **CLOSED** issue: the candidate query
+excludes CLOSED, REJECTED and RESOLVED beyond the reopen window, so a CLOSED
+issue is not a merge candidate and the report lands as its own NEW issue. The
+clustering rules make the trick work, which is the sort of thing that is
+obvious once written down and not before.
+
+**Verified by forcing the path.** The fallback would otherwise never run while
+the pool is non-empty, so the pool check was inverted and the harness run
+again: it created `CT-2026-000111` and walked it NEW → PENDING_VERIFICATION
+with no 4xx, confirming the new report did not merge into the donor. Then
+restored.
+
+**Also fixed while there:** a second reference to the deleted `list` variable
+that `node --check` accepted happily, because it is a runtime error and not a
+syntax one — and, in `table.mjs`, an import that was inserted into the file's
+opening JSDoc block. It parsed, since a comment swallows anything, and would
+have failed at the first call. `node --check` passing is not evidence a script
+runs.
+
+---
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.

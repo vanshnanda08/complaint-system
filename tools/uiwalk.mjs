@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import { pickWalkableIssue } from './pick.mjs';
 const API='http://localhost:8080/api/v1', APP='http://localhost:3000';
 const login = async (e) => (await (await fetch(`${API}/auth/login`,{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:'demo1234'})})).json());
@@ -7,8 +8,7 @@ const crew = await login('crew.roads@civictrack.example');
 const post = (tok,id,verb,body)=>fetch(`${API}/issues/${id}/${verb}`,{method:'POST',
   headers:{'Content-Type':'application/json',Authorization:`Bearer ${tok.accessToken}`},body:JSON.stringify(body??{})});
 
-const list = await (await fetch(`${API}/public/issues?status=NEW&category=POTHOLE&limit=5`)).json();
-const id = list.items[0].id;
+const id = await pickWalkableIssue(API);
 
 const b = await chromium.launch({ channel:'chrome' });
 const ctx = await b.newContext({viewport:{width:1280,height:900}});
@@ -31,7 +31,8 @@ async function look(expectStatus) {
   console.log(`  ${expectStatus.padEnd(21)} action=${JSON.stringify(btns).padEnd(38)} ${waiting.slice(0,72)}`);
 }
 
-console.log(`crew.roads viewing ${list.items[0].publicRef}:`);
+const picked = await (await fetch(`${API}/public/issues/${id}`)).json();
+console.log(`crew.roads viewing ${picked.publicRef}:`);
 await look('NEW');
 await post(sup,id,'acknowledge',{note:'Seen'});                     await look('ACKNOWLEDGED');
 await post(sup,id,'assign',{assigneeId:crew.userId,note:'To crew'}); await look('ASSIGNED');

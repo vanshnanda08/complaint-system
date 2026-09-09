@@ -4,6 +4,8 @@
  * transition table: a unit test written from the same assumption as the code
  * cannot, but the server can.
  */
+
+import { pickWalkableIssue } from './pick.mjs';
 const API = 'http://localhost:8080/api/v1';
 const login = async (email) => (await (await fetch(`${API}/auth/login`, {
   method: 'POST', headers: {'Content-Type':'application/json'},
@@ -22,9 +24,9 @@ const get = async (tok, id) => (await (await fetch(`${API}/issues/${id}`,
   { headers: { Authorization:`Bearer ${tok.accessToken}` }})).json());
 
 // A fresh NEW issue in Roads.
-const list = await (await fetch(`${API}/public/issues?status=NEW&category=POTHOLE&limit=5`)).json();
-const id = list.items[0].id;
-console.log(`walking ${list.items[0].publicRef}`);
+const id = await pickWalkableIssue(API);
+const picked = await (await fetch(`${API}/public/issues/${id}`)).json();
+console.log(`walking ${picked.publicRef}`);
 
 const steps = [
   ['acknowledge', sup, {note:'Seen, crew going out'}],
