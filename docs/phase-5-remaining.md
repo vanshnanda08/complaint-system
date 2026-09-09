@@ -8,10 +8,14 @@
 > (DD-047), and the phase 5 verification checklist is at
 > [PHASE-5-VERIFICATION.md](PHASE-5-VERIFICATION.md).
 >
+> The keep-alive is closed too, without needing an account anywhere:
+> `.github/workflows/keep-alive.yml` pings the API from GitHub Actions
+> (DD-049). The live corpus has been reduced to 110 issues and re-seeded.
+>
 > What is genuinely left needs you: the **CI failure** (its reason now prints
 > on the run page — see DD-048), **Cloudinary** credentials, and a decision on
-> a **keep-alive ping** and a **backup schedule**. The "traps already paid for"
-> section below is still worth reading.
+> whether a **backup schedule** on a laptop is worth having. The "traps already
+> paid for" section below is still worth reading.
 
 
 

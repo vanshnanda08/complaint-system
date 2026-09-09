@@ -28,6 +28,12 @@ Open **https://civic-track-six.vercel.app**.
 | Toggle dark mode, then reload | It stays dark, and **does not flash light first**. The flash is what the pre-paint script in `layout.tsx` exists to prevent |
 | In dark mode, revisit `/issues` | Status colours are still readable. They were 1.92–3.70 contrast before DD-041 — every one below AA |
 
+**Then check the keep-alive.** Actions → **Keep-alive** → *Run workflow*. It
+should go green in well under a minute and its log should show
+`health -> 200` and `public/issues -> 200`. It runs every ten minutes on its
+own; GitHub does not promise punctuality for scheduled runs, so it reduces cold
+starts rather than eliminating them (DD-049).
+
 **Sign in** as `commissioner@civictrack.example`. The password is the one set in
 Render's `CIVICTRACK_DEMO_STAFF_PASSWORD`.
 
@@ -48,9 +54,14 @@ finding.
 
 ## 2. The corpus is now ~110 issues, not ~800
 
-This changed in phase 5 at your request. `corpus-size` in
-`application-seed.yml` is **250 reports**, which the clustering engine merges
-into about 110 issues.
+This changed in phase 5 at your request, **on the live database as well as
+locally**. `corpus-size` in `application-seed.yml` is **250 reports**, which
+the clustering engine merges into 110 issues.
+
+The pre-reduction dump is kept as
+`backups/civictrack-2026-09-09-pre-reduction-802-issues.dump.gz` — the only
+copy of the 802-issue corpus that exists, since the reduction truncated it. It
+was verified restorable before the truncate, not after.
 
 Check the spread is still varied — this is the thing that was broken and got
 fixed (DD-047):
@@ -178,7 +189,6 @@ Not oversights — decisions, each with a reason:
 | | Why |
 |---|---|
 | Cloudinary server-side upload | Needs a cloud name and an unsigned preset from you. The composer uploads client-side today and falls back to a placeholder when unconfigured |
-| A keep-alive ping | Needs an account on a scheduler. It is also a small imposition on someone's free tier, and worth your decision rather than mine |
 | A scheduled backup | The cron line is in `scripts/backup.sh`. A laptop cron only fires when the laptop is awake, so it is a weaker guarantee than it appears — your call whether that is worth having |
 | REOPENED in the corpus | Needs verification records; phase 6 |
 | A reproducible corpus | Needs a fixed clock and seeded ids. Real changes to how the app is wired, and phase 8 depends on it, so it belongs before phase 8 rather than inside a corpus-size change (DD-046) |

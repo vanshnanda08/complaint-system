@@ -1867,6 +1867,50 @@ guess at what it might be.
 
 ---
 
+## DD-049 — The keep-alive lives in the repository, not on somebody else's cron service
+
+**The problem.** Render spins a free web service down after fifteen minutes
+idle, and a cold Spring Boot start takes long enough that whoever opens the
+site first sees a blank page and reasonably concludes it is broken. Supabase
+separately pauses a free project after a week with no connections, which is the
+worse of the two: it takes the corpus offline until somebody logs in and
+resumes it.
+
+**The obvious answer, and why not.** The plan was an account on cron-job.org.
+It works, but it means a third-party account holding a URL for this project,
+outside the repository, invisible to anyone reading the code, and revocable
+only by whoever owns that account. It is also a standing request against
+somebody's free tier for the life of the project.
+
+**The fix.** `.github/workflows/keep-alive.yml`, on a ten-minute schedule. No
+external account, visible and revocable in the same place as everything else,
+and two curls on GitHub-hosted minutes that a public repository does not pay
+for.
+
+It pings **two** endpoints, not one. `/actuator/health` returning 200 proves
+the web service is awake but says nothing about the database, and Supabase
+pausing is the failure that actually costs something — so it also requests
+`/public/issues?limit=1`, which cannot answer without a query.
+
+**Two details that matter.** `--max-time 90`, because the entire point is that
+the service may be cold and a short timeout would report it as down precisely
+when the ping was working. And a failed ping emits a **warning rather than
+failing the run**: from outside, a cold start, a Render restart and a genuine
+outage look identical, and a red X every ten minutes is noise that trains you
+to ignore the one that matters.
+
+**The honest limitations, stated rather than discovered later.** GitHub queues
+`schedule` runs below push-triggered ones and can delay them, sometimes
+considerably. So this reduces cold starts; it does not eliminate them, and the
+cadence is chosen with that slippage in mind rather than to hit an exact
+interval. GitHub also disables scheduled workflows on a repository with sixty
+days of inactivity — which is the correct outcome, not a bug to work around: if
+the project goes quiet for two months, the free tiers going to sleep is right.
+If a hard guarantee is ever needed, a paid instance is the answer, not a
+tighter cron.
+
+---
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.

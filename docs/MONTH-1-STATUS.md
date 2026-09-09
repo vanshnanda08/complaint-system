@@ -12,10 +12,15 @@ prints.
 | API | https://civictrack-api.onrender.com |
 | API docs | https://civictrack-api.onrender.com/swagger-ui/index.html |
 
-Deployed corpus: **~110 issues** from **250 reports**, across eight of the nine
-statuses. It was 802 issues from 2,000 reports until phase 5 -- reduced
-deliberately, and the reduction is what exposed DD-047: the old corpus only
-ever contained two statuses, which 800 rows of scrolling had hidden.
+Deployed corpus: **110 issues** from **250 reports**, 72 status-history rows,
+across eight of the nine statuses -- CLOSED 33, NEW 26, RESOLVED 18,
+ACKNOWLEDGED 10, IN_PROGRESS 8, ASSIGNED 8, PENDING_VERIFICATION 5, REJECTED 2.
+51 resolved or closed in total, 18 currently overdue.
+
+It was 802 issues from 2,000 reports until phase 5. The reduction was
+deliberate, and it is what exposed DD-047: the old corpus only ever contained
+two statuses, which 800 rows of scrolling had hidden. REOPENED is still absent
+on purpose -- it needs the citizen verification records phase 6 introduces.
 
 ---
 

@@ -1,0 +1,79 @@
+name: Keep-alive
+
+# Pings the deployed API so the free tiers do not go to sleep.
+#
+# WHY THIS IS A WORKFLOW AND NOT A THIRD-PARTY PINGER.
+#
+# The problem is real: Render's free web services spin down after fifteen
+# minutes idle, and a cold Spring Boot start takes long enough that a marker
+# opening the site for the first time sees a blank page and reasonably concludes
+# it is broken. Supabase separately pauses a free project after a week with no
+# connections, which is the more serious of the two -- it takes the corpus
+# offline until somebody logs in and resumes it.
+#
+# The usual answer is an account on a cron-ping service. This does the same job
+# inside the repository: no third-party account, no external service holding a
+# URL for this project, and it is visible and revocable in the same place as
+# everything else. Public repositories get GitHub-hosted minutes at no cost and
+# this is two curls.
+#
+# HONEST LIMITATION. GitHub does not guarantee schedule punctuality --
+# `schedule` runs are queued at lower priority than push-triggered ones and can
+# be delayed, occasionally by a lot, during busy periods. So this reduces cold
+# starts rather than eliminating them, and the every-ten-minutes cadence is
+# chosen with that slippage in mind rather than to hit an exact interval. If a
+# hard guarantee is ever needed, a paid instance is the honest fix, not a
+# tighter cron.
+#
+# GitHub also disables scheduled workflows on a repository with no activity for
+# sixty days. That is a sensible default and worth knowing about rather than
+# working around: if the project goes quiet for two months, this stops, and the
+# free tiers going to sleep is then the correct outcome.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+# A queued ping is worthless once a newer one is due.
+concurrency:
+  group: keep-alive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    name: Ping the API
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wake the API and confirm the database answered
+        env:
+          # Overridable so a fork or a renamed service does not need a code
+          # change. Falls back to the deployed host.
+          API: ${{ vars.API_BASE_URL || 'https://civictrack-api.onrender.com' }}
+        run: |
+          set -uo pipefail
+
+          # --max-time 90, not the default: the whole point is that the service
+          # may be cold, and a cold Spring Boot start on a free instance takes
+          # the better part of a minute. A short timeout would report the
+          # service as down precisely when the ping was working.
+          echo "Waking $API ..."
+          CODE=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 90 \
+                   "$API/actuator/health" || echo "000")
+          echo "health -> $CODE"
+          cat /tmp/health.json 2>/dev/null || true
+          echo
+
+          # A 200 from the health endpoint alone does not prove the DATABASE is
+          # awake, and Supabase pausing is the failure that actually costs
+          # something. Hitting a route that has to run a query does.
+          CODE2=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 90 \
+                    "$API/api/v1/public/issues?limit=1" || echo "000")
+          echo "public/issues -> $CODE2"
+
+          if [ "$CODE2" != "200" ]; then
+            echo "::warning::The API did not serve a database-backed request (got $CODE2)."
+            echo "Not failing the run: a cold start or a Render restart looks"
+            echo "identical to an outage from here, and a red X every ten"
+            echo "minutes would be noise rather than a signal."
+          fi
