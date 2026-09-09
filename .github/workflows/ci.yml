@@ -18,6 +18,13 @@ on:
   pull_request:
     branches: ["**"]
 
+# The default token is read-only on this repository. `checks: write` is the
+# minimum the failure-publishing step below needs, and nothing here needs
+# `contents: write` -- CI does not push.
+permissions:
+  contents: read
+  checks: write
+
 concurrency:
   # A newer push supersedes an in-flight run on the same ref. The suite takes
   # minutes and nobody is served by finishing a run for a commit that has
@@ -161,6 +168,65 @@ jobs:
             tail -120 /tmp/mvn.log 2>/dev/null || echo "(no maven log captured)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Publishes the same failure text as a CHECK RUN.
+      #
+      # $GITHUB_STEP_SUMMARY renders on the run page, which sounded sufficient
+      # until it turned out an anonymous visitor gets "Sign in to view logs"
+      # and no summary at all. Logs and artifacts need admin rights on the
+      # repository; check-run output does not -- it comes back from
+      # GET /repos/{owner}/{repo}/commits/{sha}/check-runs for anyone who can
+      # see the repository.
+      #
+      # That distinction is the whole point. This job failed on every run for a
+      # week and the only fact available from outside was the word "failure",
+      # which is why its cause got guessed at three times instead of read once.
+      - name: Publish the failure where it can be read
+        if: failure()
+        working-directory: backend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          BODY=$(
+            if ls target/surefire-reports/*.txt >/dev/null 2>&1; then
+              FAILED=$(grep -lE "FAILURE|ERROR" target/surefire-reports/*.txt)
+              if [ -n "$FAILED" ]; then
+                echo "Failing test reports:"
+                for f in $FAILED; do
+                  echo
+                  echo "=== $(basename "$f" .txt) ==="
+                  sed -n '1,60p' "$f"
+                done
+              else
+                echo "Surefire reports exist and none records a failure, so the"
+                echo "build itself failed. Maven tail:"
+                echo
+                tail -80 /tmp/mvn.log
+              fi
+            else
+              echo "No surefire reports: the build failed before any test ran."
+              echo "Maven tail:"
+              echo
+              tail -100 /tmp/mvn.log
+            fi
+          )
+          BODY=$(printf '%s' "$BODY" | head -c 60000)
+          printf '%s\n' "$BODY" | head -40
+
+          jq -n --arg sha "$GITHUB_SHA" --arg body "$BODY" \
+            '{name:"Backend failure detail", head_sha:$sha, status:"completed",
+              conclusion:"neutral",
+              output:{title:"Why the backend job failed",
+                      summary:"Published so it is readable without repository admin rights.",
+                      text:$body}}' > /tmp/check.json
+
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs" \
+            -d @/tmp/check.json | head -c 300
+          echo
 
       - name: Publish test report
         if: always()
