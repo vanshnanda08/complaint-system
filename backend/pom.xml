@@ -217,6 +217,23 @@
                         <include>**/*Test.java</include>
                         <include>**/*IT.java</include>
                     </includes>
+                    <!--
+                      Pinned. Surefire's default is `filesystem`, which is the
+                      order the OS happens to list the class files in - and that
+                      differs between macOS and Linux. The suite therefore ran in
+                      one order on every developer machine and a different one on
+                      every CI runner, and two order-dependent tests hid in the
+                      gap: they passed locally and failed on CI for a week while
+                      the cause was guessed at three times. See DD-052.
+
+                      `alphabetical` is not better than `filesystem` at finding
+                      such bugs. It is better at not HIDING them, because it is
+                      the same everywhere. Tests should not depend on order at
+                      all, and the way to check that is to run the suite under
+                      -Dsurefire.runOrder=reversealphabetical, which is how both
+                      of those bugs were finally caught.
+                    -->
+                    <runOrder>alphabetical</runOrder>
                 </configuration>
             </plugin>
             <plugin>

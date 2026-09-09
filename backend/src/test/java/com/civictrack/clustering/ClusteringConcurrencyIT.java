@@ -1,6 +1,7 @@
 package com.civictrack.clustering;
 
 import com.civictrack.IntegrationTestBase;
+import com.civictrack.support.Fixtures;
 import com.civictrack.issue.Issue;
 import com.civictrack.issue.IssueRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,14 +52,23 @@ import static org.assertj.core.api.Assertions.within;
 class ClusteringConcurrencyIT extends IntegrationTestBase {
 
     @Autowired private ClusteringService clustering;
+    @Autowired private Fixtures fixtures;
     @Autowired private IssueRepository issueRepo;
     @Autowired private JdbcTemplate jdbc;
 
     @BeforeEach
     void clearIssues() {
-        jdbc.update("DELETE FROM issue_status_history");
-        jdbc.update("DELETE FROM reports");
-        jdbc.update("DELETE FROM issues");
+        // Fixtures.clearIssues() rather than three DELETEs inlined here.
+        //
+        // The inline version deleted issue_status_history, reports and issues
+        // and stopped there, which leaves escalation_events, verifications and
+        // notifications holding foreign keys into issues. It worked only while
+        // no earlier test in the run had produced an escalation -- and whether
+        // one had depends on Surefire's run order, which differs by platform.
+        // Under -Dsurefire.runOrder=reversealphabetical it fails outright with
+        //   violates foreign key constraint "escalation_events_issue_id_fkey"
+        // The complete, FK-ordered sequence lives in one place. See DD-052.
+        fixtures.clearIssues();
     }
 
     @ParameterizedTest(name = "{0} simultaneous identical reports produce exactly one issue")

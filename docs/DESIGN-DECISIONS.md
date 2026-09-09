@@ -2016,6 +2016,69 @@ that on.
 
 ---
 
+## DD-052 — CI was red for a week because Surefire orders tests by filesystem
+
+**The defect.** Two tests depended on what had run before them. Surefire's
+default `runOrder` is `filesystem` — the order the operating system happens to
+list class files in — and that differs between macOS and Linux. So the suite
+ran in one order on every developer machine and a different one on every CI
+runner. 166/166 locally, red on CI, every single time.
+
+**Bug one: reading an arbitrary meter.** `ClusteringService.ingest` is
+`@Timed("civictrack.ingest")` and throws `LowAccuracyException` from *inside*
+the timed method. Micrometer's `TimedAspect` tags every timing with
+`exception` — `"none"` on success, the exception's name on failure — so once a
+rejected ingest has run there are **two** meters named `civictrack.ingest`,
+differing only by tag. `IngestMetricsIT` called
+`meterRegistry.find(name).timer()`, which returns an arbitrary one, and got the
+`exception=LowAccuracyException` timer: count 1, and it never moves again
+because every later request in that test succeeds. Hence the CI failure
+`Expecting actual: 1L to be greater than or equal to: 4L`.
+
+It only happens when a test that rejects an ingest has already run **in the
+same cached Spring context**. `ReportIngestApiIT` does exactly that and carries
+the same `@AutoConfigureMockMvc` configuration, so the two share a context. On
+CI it ran third and `IngestMetricsIT` eleventh; locally the reverse.
+
+Fixed by summing across every matching timer rather than picking one. The
+percentile assertion takes the busiest timer, since a stale exception-tagged
+sibling is not what it is asking about.
+
+**Bug two: incomplete cleanup.** Five test classes each inlined the same
+three-line `@BeforeEach` — delete `issue_status_history`, `reports`, `issues` —
+while `escalation_events`, `verifications` and `notifications` all hold foreign
+keys into `issues`. It worked only while no earlier test in the run had
+produced an escalation. Under `reversealphabetical` it fails outright with
+`violates foreign key constraint "escalation_events_issue_id_fkey"`.
+
+The correct, FK-ordered sequence already existed in `Fixtures.clearIssues()`.
+Five copies had drifted from it. They all call it now.
+
+**The fix that stops this recurring.** `<runOrder>alphabetical</runOrder>` in
+the POM. Alphabetical is no better than filesystem at *finding* order
+dependence; it is better at not *hiding* it, because it is the same everywhere.
+The way to actually find it is `-Dsurefire.runOrder=reversealphabetical`, which
+is how both of these were caught, and which is worth running before a phase
+ends.
+
+**Verified.** The full suite passes 166/166 under `filesystem`, `alphabetical`
+and `reversealphabetical`. `IngestMetricsIT` was reproduced red first — same
+numbers as CI, `1L` against `4L` and `1L` against `2L` — then green after the
+change, in the same forced order. Its discriminating power was rechecked by
+deleting the `TimedAspect` bean: all three cases go red with the diagnostic
+message intact.
+
+**What this cost, and why.** Three wrong hypotheses — planner choice,
+architecture, Ryuk — each ruled out by running the suite somewhere new: macOS
+arm64, Linux arm64, Linux amd64, Ryuk disabled. All 166/166, because the
+platform was never the problem. Every one of those was a guess made without
+the error text, and the error text was one paste away the whole time. The
+lesson is not that the guesses were bad. It is that guessing was allowed to
+continue for a week instead of the first hour being spent making the failure
+readable (DD-048, DD-051).
+
+---
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.
