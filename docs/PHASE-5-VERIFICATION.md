@@ -208,7 +208,8 @@ Not oversights — decisions, each with a reason:
 
 | | Why |
 |---|---|
-| Cloudinary server-side upload | Needs a cloud name and an unsigned preset from you. The composer uploads client-side today and falls back to a placeholder when unconfigured |
+| A signed, server-side upload | Cloudinary is configured and working, but with an UNSIGNED preset, which is publicly writable by anyone who reads the JS bundle. Inherent to client-side upload. The signed version needs a backend endpoint and secret management — worth doing, not at one month (DD-053) |
+| The Cloudinary orphan sweep | Deleting assets with no report row. `Photo.tsx` already degrades to "Photo unavailable", so the failure is handled; the job is not built |
 | A scheduled backup | The cron line is in `scripts/backup.sh`. A laptop cron only fires when the laptop is awake, so it is a weaker guarantee than it appears — your call whether that is worth having |
 | REOPENED in the corpus | Needs verification records; phase 6 |
 | A reproducible corpus | Needs a fixed clock and seeded ids. Real changes to how the app is wired, and phase 8 depends on it, so it belongs before phase 8 rather than inside a corpus-size change (DD-046) |

@@ -2079,6 +2079,54 @@ readable (DD-048, DD-051).
 
 ---
 
+## DD-053 — Photo upload is client-side and unsigned, and that is a trade rather than an oversight
+
+**What was configured.** A Cloudinary cloud name and an **unsigned** upload
+preset, set as `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` and
+`NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`. No code changed: `uploadPhoto.ts` has
+carried both paths since phase 4 and switches on whether the two variables are
+present. The browser compresses the photo, uploads it straight to Cloudinary,
+and sends the resulting URL to `POST /reports`, which takes `photoUrl` as a
+string.
+
+**The exposure, stated plainly.** An unsigned preset is publicly writable. It
+has to be: the upload happens in the browser, so the preset name ships inside
+the JavaScript bundle, and anyone who reads the bundle can upload to the
+account with it. There is no way to have client-side uploads and not have this.
+Neither value is a secret and neither is treated as one — they sit in
+`.env.local` and in Vercel's environment as plain configuration.
+
+**Why accept it here.** The alternative is a signed upload: the browser asks
+the backend for a signature, the backend holds the API secret, and Cloudinary
+rejects anything unsigned. That is the right end state and it is real work —
+a new endpoint, secret management in Render, and a second code path in the
+composer. For a university project on a free tier, at the one-month milestone,
+with the blueprint having specified client-side unsigned upload for phase 4 in
+the first place, the trade is reasonable. What is not reasonable is leaving it
+undocumented so that it reads later as something nobody thought about.
+
+**Mitigations that cost nothing** and belong on the preset itself rather than
+in code: a maximum file size of about 2 MB (the composer already compresses to
+roughly 300 KB, so anything larger did not come from this application), an
+allowed-format list of jpg/png/webp, and a dedicated folder.
+
+**The orphan sweep is still outstanding.** `Photo.tsx` already names it: a
+cleanup job deleting assets with no corresponding report row, and the race
+where that leaves a live report pointing at a deleted asset. The component
+degrades to "Photo unavailable" rather than a broken image, so the failure is
+handled; the job itself is not built.
+
+**Verified end to end, not by inspection.** The preset was exercised with a
+direct upload before any configuration was written, because a typo in a preset
+name fails silently at the worst possible moment. Then a real 1200x900 photo
+was put through the composer in a browser: it compressed to 26 KB, POSTed to
+`api.cloudinary.com`, the ingest returned 201, and the report row stored
+`https://res.cloudinary.com/<cloud>/image/upload/...` — which resolves at 200,
+returns exactly those 26,169 bytes, and renders on the issue page at full size
+with no "Photo unavailable" panel.
+
+---
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.
