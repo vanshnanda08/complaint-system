@@ -130,7 +130,8 @@ function Icon({ name }: { name: IconName }) {
  * Each caller now sets exactly one background, so there is nothing to resolve.
  */
 const ROW =
-  "flex items-center gap-3 px-4 rounded-2xl font-medium no-underline transition-colors w-full text-left border-0 cursor-pointer";
+  "flex items-center gap-3 px-4 rounded-2xl font-medium no-underline w-full text-left " +
+  "border-0 cursor-pointer u-press transition-colors duration-[var(--dur-fast)]";
 
 /** The non-active background, for links and buttons alike. */
 const ROW_IDLE = "bg-transparent text-ink-muted hover:bg-rule hover:text-ink";
@@ -241,10 +242,34 @@ export function SiteHeader() {
           </button>
         </div>
 
+        {/*
+          The mobile disclosure animates via `grid-template-rows: 0fr -> 1fr`,
+          not by toggling `hidden`.
+
+          Height cannot be transitioned to or from `auto`. The usual
+          workarounds either hard-code a max-height, which clips the menu the
+          day a link is added, or give up and snap. The grid trick animates to
+          whatever the content's real height turns out to be.
+
+          `invisible` while collapsed is not cosmetic: it takes the links out
+          of the tab order. A menu that looks closed but is still focusable is
+          a keyboard trap, and it is invisible to sighted testing.
+
+          Above `md` every one of these is neutralised -- `md:grid-rows-none`,
+          `md:visible`, `md:overflow-visible` -- and the nav is a plain column
+          again. One element, one copy of the links.
+        */}
         <nav
           id="site-nav"
           aria-label="Main"
-          className={`${open ? "flex" : "hidden"} md:flex flex-col flex-1 mt-6 md:mt-8`}
+          className={`grid md:block flex-1 mt-6 md:mt-8
+                      transition-[grid-template-rows] duration-[var(--dur-base)]
+                      ease-[var(--ease-standard)] md:transition-none
+                      md:grid-rows-none ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+        >
+        <div
+          className={`overflow-hidden md:overflow-visible flex flex-col md:h-full
+                      ${open ? "" : "invisible md:visible"}`}
         >
           <p className="text-meta text-ink-muted uppercase tracking-wider mb-2 px-4">
             Menu
@@ -316,6 +341,7 @@ export function SiteHeader() {
               <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
             </button>
           </div>
+        </div>
         </nav>
       </div>
     </header>

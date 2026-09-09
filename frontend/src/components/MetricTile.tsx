@@ -47,7 +47,7 @@ export function MetricTile({
 
   return (
     <section
-      className={`p-5 relative flex flex-col h-full border ${
+      className={`p-5 relative flex flex-col h-full border u-lift ${
         filled
           ? "bg-tile-emph-bg border-tile-emph-bg text-tile-emph-ink"
           : pending

@@ -298,6 +298,144 @@
      var(--sidebar-width). */
 }
 
+/* ==========================================================================
+   Motion
+   --------------------------------------------------------------------------
+   Durations and easing curves are Material Design 3's published tokens rather
+   than numbers picked by eye. Two reasons: they are calibrated as a set, so
+   things that move together stay coherent, and "why 220ms" has an answer that
+   is not "it looked right".
+
+     m3.material.io/styles/motion/easing-and-duration/tokens-specs
+
+   THE RULE THIS FILE ENFORCES: motion carries meaning or it does not ship.
+   Every animation below either shows where something came from, confirms a
+   press, or holds a place while data loads. Nothing moves to be impressive --
+   this is a tool people open when something in their street is broken, and a
+   page that shimmers at them while they are trying to read a deadline is
+   working against its own purpose.
+
+   Enter and exit use DIFFERENT curves. Entering decelerates: quick to arrive,
+   gentle to settle. Leaving accelerates: reluctant to start, quick to go. Using
+   one curve for both is the single most common way motion ends up feeling
+   cheap.
+   ========================================================================== */
+:root {
+  /* Micro-interactions: a press, a hover, a checkbox. Below ~100ms a change
+     reads as instant rather than animated, which is what these want. */
+  --dur-instant: 80ms;
+  --dur-fast: 140ms;
+  /* Component-level: a card lifting, a badge settling. */
+  --dur-base: 200ms;
+  /* Entrances and anything that travels a distance. */
+  --dur-slow: 320ms;
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+  /* A small overshoot, for a control confirming it took your input. Used only
+     on the category picker, where the tap target is large and the feedback has
+     to survive being looked at through a cracked screen in daylight. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Elevation. The original token set allowed no shadow at all except the
+     header hairline; this set uses cards, and a card with no elevation against
+     a near-white surface relies entirely on its border. These are deliberately
+     shallow -- depth enough to separate, not enough to float. */
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-2: 0 2px 8px rgb(0 0 0 / 0.07), 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-3: 0 8px 24px rgb(0 0 0 / 0.10), 0 2px 6px rgb(0 0 0 / 0.05);
+}
+
+/* Shadows tuned for light surfaces disappear on dark ones -- black on near
+   black is nothing. Dark mode leans on a deeper, wider shadow plus the
+   surface-raised step to separate layers. */
+.dark {
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 2px 10px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-3: 0 10px 30px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.45);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* A sweep, not a pulse. A pulsing block draws the eye repeatedly to a thing
+   that is not there yet; a single directional sweep reads as "loading" and
+   then gets out of the way. */
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position: 200% 0; }
+}
+
+@keyframes pop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+/* Content arriving. `backwards` so the element is already at the start of the
+   animation before it begins, rather than flashing at full opacity for a frame
+   while the delay runs down. */
+.u-rise {
+  animation: rise var(--dur-slow) var(--ease-decelerate) backwards;
+}
+
+.u-fade {
+  animation: fade var(--dur-base) var(--ease-standard) backwards;
+}
+
+/* Stagger. Set --i on each child; the cap keeps a fifty-row queue from making
+   the last row wait two seconds, which is the point at which a stagger stops
+   being an entrance and becomes a delay. */
+.u-stagger > * {
+  animation: rise var(--dur-slow) var(--ease-decelerate) backwards;
+  animation-delay: calc(min(var(--i, 0) * 28ms, 340ms));
+}
+
+/* Lift on hover, settle on press. The press state matters more than the hover:
+   phones have no hover, and a card that visibly takes the tap is the only
+   feedback a touch user gets before the page changes. */
+.u-lift {
+  transition:
+    transform var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard),
+    background-color var(--dur-fast) var(--ease-standard);
+}
+.u-lift:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); }
+.u-lift:active { transform: translateY(0); box-shadow: var(--shadow-1); }
+
+.u-press {
+  transition:
+    transform var(--dur-instant) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard),
+    opacity var(--dur-fast) var(--ease-standard);
+}
+.u-press:active:not(:disabled) { transform: scale(0.97); }
+
+.u-pop { animation: pop var(--dur-base) var(--ease-spring); }
+
+/* Skeletons. `--surface` and `--rule` rather than a grey, so it follows the
+   theme; both stops are already AA-irrelevant because a skeleton carries no
+   text. */
+.u-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--rule) 50%,
+    var(--surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: var(--radius-sm);
+}
+
 /* --------------------------------------------------------------------------
    Base
    -------------------------------------------------------------------------- */
@@ -332,15 +470,48 @@ body {
   border-radius: var(--radius-sm);
 }
 
-/* The single animated moment in the application is the report count increment
-   (blueprint 1.6). Everything else is static by construction, so this media
-   query has exactly one thing to switch off. */
+/* Reduced motion.
+   
+   Two layers, because one is not enough. Zeroing the DURATION TOKENS stops
+   anything declared through them, including transitions on elements this
+   selector cannot reach into. The blanket rule then catches anything that
+   hard-codes a duration -- a third-party style, or a future component whose
+   author forgot the tokens exist.
+   
+   Note what is NOT switched off: `scroll-behavior`, and any transform that is
+   the only indication a control was pressed. A user who asks for reduced
+   motion is asking for less movement, not for less feedback. Opacity and
+   colour changes are kept; travel and scale are what go. */
 @media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 0.01ms;
+    --dur-fast: 0.01ms;
+    --dur-base: 0.01ms;
+    --dur-slow: 0.01ms;
+  }
+
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
+
+  /* The shimmer is a loop, so zeroing its duration is not enough -- it would
+     sit frozen on whichever frame it stopped at. Replace it with a flat fill. */
+  .u-skeleton {
+    animation: none !important;
+    background: var(--rule);
+  }
+
+  /* Entrances become instant appearances rather than invisible elements. */
+  .u-rise, .u-fade, .u-stagger > * {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+
+  .u-lift:hover, .u-press:active { transform: none; }
 }

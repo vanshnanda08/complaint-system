@@ -2127,6 +2127,79 @@ with no "Photo unavailable" panel.
 
 ---
 
+## DD-054 — A motion system, which reverses blueprint §1.6, and what was kept
+
+**The change.** The blueprint allowed exactly one animated moment in the whole
+application — the report-count increment on the success screen (§1.6) — and
+§1.7 ruled out skeletons along with every other entrance animation. The user
+asked for motion and a more finished interface. That is their call on their
+project, so this reverses those two rules. It is recorded here rather than
+absorbed silently, because §1.6 was an argument and not an oversight, and a
+future reader finding animation everywhere deserves to know it was deliberate.
+
+**The argument that was reversed, stated fairly.** An accountability tool is
+not a consumer app; a page that moves while somebody is trying to read a
+deadline is working against its own purpose; and paint work is expensive on
+exactly the cheap hardware this project is built for. None of that stopped
+being true.
+
+**So the rule the motion system enforces is narrower:** motion carries meaning
+or it does not ship. Every animation added either shows where something came
+from, confirms a press, or holds a place while data loads. Nothing was added to
+be impressive.
+
+**Values are Material Design 3's published tokens**, not numbers chosen by eye
+— durations 80/140/200/320ms and the standard, decelerate, accelerate and
+emphasized curves. Two reasons: they are calibrated as a set, so things moving
+together stay coherent; and "why 200ms" has an answer better than "it looked
+right". Enter and exit use different curves, which is the single most common
+thing that separates motion that feels considered from motion that feels cheap.
+
+**What was added, and why each one earns its place.**
+
+- **Press feedback on every control** (`u-press`, scale 0.97). A phone has no
+  hover, so on touch the press is the *only* feedback between the tap and the
+  page changing — which on a weak connection is a second or more of apparent
+  nothing.
+- **Row and tile hover.** The issue row was a full-width link with no underline,
+  no cursor change and no hover state; nothing said it was clickable.
+- **Staggered list entrance**, 28ms apart, capped at 340ms total. The cap is the
+  point: past it a stagger stops being an entrance and becomes a delay.
+- **Skeletons** for the issue list and the dashboard tiles, shaped like the real
+  content. Not decoration — they hold the LAYOUT. A region that is one line of
+  text and then twenty-five rows shifts everything below it when data lands.
+- **A mobile menu that opens** via `grid-template-rows: 0fr -> 1fr`. Height
+  cannot transition to `auto`; the alternatives are a hard-coded max-height
+  that clips the day a link is added, or no transition at all.
+- **Elevation tokens**, redefined for dark mode because a shadow tuned for a
+  light surface is black on near-black and simply invisible.
+
+**What was kept, deliberately.** Status is still encoded by colour AND shape AND
+word; the greyscale check still separates all of them. Contrast is unchanged.
+`--brand-*` is still never used to mean a status. The one filled dashboard tile
+is still breach red, not brand.
+
+**`prefers-reduced-motion` is handled in two layers, and this matters more than
+the animations do.** Zeroing the duration *tokens* stops anything declared
+through them, including transitions on elements a blanket selector cannot reach
+into; the blanket rule then catches anything hard-coding a duration. Two
+specifics that a single `duration: 0` misses: the skeleton shimmer is a loop, so
+zeroing its duration freezes it mid-sweep rather than stopping it — it is
+replaced with a flat fill; and entrance animations are set to `none` with
+`opacity: 1`, because an entrance that never runs otherwise leaves its content
+permanently invisible. Verified in a real browser under
+`reducedMotion: 'reduce'`: tokens read `0.01ms`, the page entrance reports
+`animation-name: none`, and content opacity is 1.
+
+**Verified**, not asserted: lint clean, 53 tests, production build clean, and
+in a browser — row hover changes background, tile hover applies `--shadow-2`
+and `translateY(-1px)`, 56 skeleton elements render while the list loads, and
+`/issues`, `/dashboard`, `/report` and `/styleguide` all render with zero
+console errors, no horizontal overflow at 360px, and greyscale status
+separation intact.
+
+---
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.

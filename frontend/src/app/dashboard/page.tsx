@@ -3,7 +3,7 @@
 import { PageShell } from "@/components/PageShell";
 import { MetricTile } from "@/components/MetricTile";
 import { ErrorState } from "@/components/ErrorState";
-import { LoadingState } from "@/components/LoadingState";
+import { SkeletonTileGrid } from "@/components/Skeleton";
 import { useDashboardSummary } from "@/lib/queries";
 import { absoluteDateTime } from "@/lib/format";
 import type { ApiError } from "@/lib/api";
@@ -36,7 +36,7 @@ export default function DashboardPage() {
         ones the escalation system acts on, not a separate report.
       </p>
 
-      {summary.isPending && <LoadingState label="Loading the dashboard" />}
+      {summary.isPending && <SkeletonTileGrid label="Loading the dashboard" />}
 
       {summary.isError && (
         <ErrorState
@@ -48,7 +48,7 @@ export default function DashboardPage() {
 
       {summary.data && (
         <>
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 u-stagger">
             <MetricTile
               label="Currently overdue"
               emphasis
@@ -96,7 +96,7 @@ export default function DashboardPage() {
             visible as what it does.
           </p>
 
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 u-stagger">
             <MetricTile
               label="Median resolution time"
               pending="Will show the median days to resolve, by ward and by department."

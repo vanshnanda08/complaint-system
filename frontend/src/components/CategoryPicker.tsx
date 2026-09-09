@@ -46,7 +46,14 @@ export function CategoryPicker({
           return (
             <label
               key={c.code}
+              // Selection is confirmed by a brief scale overshoot on the glyph
+              // (u-pop, below) rather than by colour alone. This control is
+              // used outdoors, one-handed, often on a screen that is not
+              // clean, and the border going from 1px to 2px is not much to
+              // notice under those conditions.
               className="flex items-center gap-3 px-3 py-2 cursor-pointer bg-surface-raised
+                         u-press transition-[border-color,background-color]
+                         duration-[var(--dur-fast)] hover:bg-surface
                          has-[:focus-visible]:outline has-[:focus-visible]:outline-2
                          has-[:focus-visible]:outline-offset-2"
               style={{
@@ -66,13 +73,20 @@ export function CategoryPicker({
                 className="sr-only"
               />
               <span
-                className="flex items-center justify-center shrink-0"
+                // `key` changes with the selected state, which remounts the
+                // span and so replays the animation. Without that, React keeps
+                // the same element and the keyframes -- already finished --
+                // never run again, so the pop happens once and never more.
+                key={selected ? "on" : "off"}
+                className={`flex items-center justify-center shrink-0 ${selected ? "u-pop" : ""}`}
                 style={{
                   width: 32,
                   height: 32,
                   borderRadius: "var(--radius-sm)",
                   background: selected ? "var(--ink)" : "transparent",
                   color: selected ? "var(--surface-raised)" : "var(--ink)",
+                  transition: "background-color var(--dur-fast) var(--ease-standard), "
+                            + "color var(--dur-fast) var(--ease-standard)",
                 }}
               >
                 {glyphFor(c.code)}

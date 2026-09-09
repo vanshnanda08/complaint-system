@@ -1,3 +1,6 @@
+"use client";
+
+import { usePathname } from "next/navigation";
 import { SiteHeader } from "./SiteHeader";
 
 /**
@@ -15,6 +18,8 @@ export function PageShell({
   children: React.ReactNode;
   wide?: boolean;
 }) {
+  const pathname = usePathname();
+
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <SiteHeader />
@@ -22,8 +27,19 @@ export function PageShell({
           cannot force the flex row wider than the viewport -- the default
           `min-width: auto` on a flex item is what turns that into a
           horizontal scrollbar on the whole page. */}
+      {/*
+          `key={pathname}` remounts main on every navigation, which is what
+          replays the entrance -- React would otherwise reuse the element and
+          the keyframes, already finished, would never run again. Same reason
+          the category glyph is keyed on its selected state.
+
+          The entrance is 8px and 320ms on the CONTAINER, not on each child.
+          One element moving reads as the page arriving; a dozen children
+          arriving separately reads as the page struggling.
+      */}
       <main
-        className="flex-1 min-w-0 w-full mx-auto px-4 py-6 md:px-8"
+        key={pathname}
+        className="flex-1 min-w-0 w-full mx-auto px-4 py-6 md:px-8 u-rise"
         style={{ maxWidth: wide ? 1100 : 760 }}
       >
         {children}

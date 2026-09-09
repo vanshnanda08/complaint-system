@@ -36,6 +36,8 @@ export interface IssueRowProps {
   landmark?: string | null;
   audience?: "public" | "staff";
   href?: string;
+  /** Carries the stagger index (`--i`) when rendered inside `.u-stagger`. */
+  style?: React.CSSProperties;
 }
 
 export function IssueRow({
@@ -53,12 +55,21 @@ export function IssueRow({
   landmark,
   audience = "public",
   href,
+  style,
 }: IssueRowProps) {
   return (
     <Link
       href={href ?? `/issues/${id}`}
-      className="block border-b border-rule py-3 no-underline text-ink"
-      style={{ minHeight: "var(--hit-min)" }}
+      // The row is a link across its whole width, and nothing said so before:
+      // no underline, no cursor change beyond the default, no hover state. The
+      // tint and the inset are the affordance. Padding is on the inside so the
+      // hover fill has something to fill -- a hairline-separated row with a
+      // background change and no padding looks like a rendering fault.
+      className="block border-b border-rule py-3 px-2 -mx-2 no-underline text-ink
+                 rounded-[var(--radius-token-sm)] u-press
+                 transition-colors duration-[var(--dur-fast)]
+                 hover:bg-surface-raised"
+      style={{ minHeight: "var(--hit-min)", ...style }}
     >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <StatusRule status={status} overdue={overdue} audience={audience} />

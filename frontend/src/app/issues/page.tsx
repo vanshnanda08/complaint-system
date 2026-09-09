@@ -7,6 +7,7 @@ import { PageShell } from "@/components/PageShell";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
+import { SkeletonIssueList } from "@/components/Skeleton";
 import { IssueRow } from "@/components/IssueRow";
 import { Button } from "@/components/Button";
 import { useCategories, useIssues, useWards } from "@/lib/queries";
@@ -87,7 +88,10 @@ function IssueIndexInner() {
         />
       )}
 
-      {issues.isPending && !issues.data && <LoadingState label="Loading issues" />}
+      {/* A skeleton rather than a sentence, because this region has a known
+          shape and reflowing it is what shifts the page under a reader on a
+          slow connection. See the note in Skeleton.tsx. */}
+      {issues.isPending && !issues.data && <SkeletonIssueList rows={8} label="Loading issues" />}
 
       {issues.data && issues.data.items.length === 0 && (
         filtersActive ? (
@@ -105,10 +109,13 @@ function IssueIndexInner() {
             {Math.min(offset + PAGE, issues.data.total)}
           </p>
 
-          <div className="mt-2 border-t border-rule">
-            {issues.data.items.map((i) => (
+          {/* u-stagger walks the rows in 28ms apart, capped so a full page does
+              not make the last row wait. --i is the row's index. */}
+          <div className="mt-2 border-t border-rule u-stagger">
+            {issues.data.items.map((i, idx) => (
               <IssueRow
                 key={i.id}
+                style={{ "--i": idx } as React.CSSProperties}
                 id={i.id}
                 publicRef={i.publicRef}
                 categoryName={i.categoryName}
