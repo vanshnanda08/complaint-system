@@ -2,6 +2,36 @@ spring:
   application:
     name: civictrack
 
+  # ==========================================================================
+  # READ THIS BEFORE CHANGING DATABASE_URL IN ANY DEPLOYED ENVIRONMENT.
+  #
+  # On Supabase, use the SESSION POOLER host:
+  #     aws-0-<region>.pooler.supabase.com, port 5432,
+  #     user postgres.<project-ref>
+  #
+  # NOT the direct host (db.<ref>.supabase.co) and NOT the transaction pooler.
+  #
+  # THE HOSTNAME IS THE TELL, NOT THE PORT. The session pooler and the
+  # transaction pooler differ by port (5432 vs 6543); the direct host and the
+  # session pooler differ only by hostname, and both are 5432. Reading the port
+  # alone tells you nothing.
+  #
+  # Why the direct host fails: it is IPv6-only, and Render's free tier has no
+  # IPv6 egress. It fails with "Network is unreachable" -- which reads like a
+  # firewall problem and is not. This cost a day, twice, the second time after
+  # a password rotation put the direct host back in the connection string.
+  #
+  # Why the TRANSACTION pooler fails, and fails worse -- intermittently, in a
+  # way that looks exactly like a clustering bug:
+  #   - Hibernate uses server-side prepared statements, which transaction
+  #     pooling breaks.
+  #   - The whole concurrency design rests on pg_advisory_xact_lock and
+  #     FOR UPDATE row locks, both of which need a stable session.
+  # Hikari below is already the pool. A second pooler in transaction mode is
+  # not redundancy, it is a correctness bug.
+  #
+  # See DD-040.
+  # ==========================================================================
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/civictrack}
     username: ${DATABASE_USER:civictrack}
@@ -110,6 +140,31 @@ civictrack:
       refresh-ttl: P30D
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
+
+  # The nightly Cloudinary orphan sweep.
+  #
+  # The photo is uploaded from the browser BEFORE ingest is called -- on
+  # purpose, so a slow third-party call never happens while the clustering
+  # engine holds pg_advisory_xact_lock. The cost is that every abandoned
+  # submission leaves an asset no report row points at.
+  #
+  # Absent api-key / api-secret means this does nothing at all, which is the
+  # normal state locally. Note these are the ADMIN credentials and are nothing
+  # to do with the browser upload, which uses an unsigned preset and holds no
+  # secret (DD-053).
+  #
+  # dry-run DEFAULTS TO TRUE and should stay true until somebody has read a few
+  # runs of the log. This job deletes things, on a schedule, unattended, based
+  # on a query; if that query is wrong the damage is silent. min-age keeps it
+  # away from assets still mid-submission, and max-deletions bounds a bad run.
+  cloudinary:
+    cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+    api-key: ${CLOUDINARY_API_KEY:}
+    api-secret: ${CLOUDINARY_API_SECRET:}
+    dry-run: ${CLOUDINARY_DRY_RUN:true}
+    min-age: PT24H
+    max-deletions: 200
+    cron: "0 30 3 * * *"
 
 logging:
   level:

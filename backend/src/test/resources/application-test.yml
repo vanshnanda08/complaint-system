@@ -24,3 +24,9 @@ civictrack:
   security:
     jwt:
       secret: test-only-signing-secret-at-least-32-bytes-long
+
+  # Disabled for the same reason the SLA sweep is: a background job calling a
+  # third-party API mid-test is a flake with a confusing signature. The sweep's
+  # own logic is tested directly instead -- see CloudinaryOrphanSweepIT.
+  cloudinary:
+    cron: "-"

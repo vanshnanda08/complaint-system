@@ -2250,6 +2250,79 @@ prevent. The reasoning is recorded in the component; only the prose is gone.
 
 ---
 
+## DD-056 — Auditing phase 5 against its own brief, and the three things it turned up
+
+Asked to confirm the one-month milestone was complete, the honest way to answer
+was to read the phase-5 brief line by line rather than to re-read my own
+summary of it. Most of it checked out — multi-stage Dockerfile with a CDS
+training stage, Hikari capped at 8 with leak detection, a single static
+Testcontainer reused across classes, springdoc with a public Swagger UI, the
+seed run against the deployed database, the architecture diagrams. Three items
+did not.
+
+**1. The pooler warning was not where the brief said to put it.** The brief is
+specific: *"Put this warning in a comment next to the datasource config."* It
+was in four documents and not in `application.yml`. That is precisely the wrong
+place for it: the person who breaks this is editing a connection string, and
+they are looking at the connection string, not at `DESIGN-DECISIONS.md`. This
+is the most expensive mistake the project has made — a day, twice, the second
+time when a password rotation put the direct host back — and the warning was
+everywhere except at the point of use. It is now on the datasource block, and
+it leads with the thing that is actually confusing: the hostname is the tell,
+not the port.
+
+**2. "Cloudinary upload with transformation" had no transformation.** The
+stored URL was Cloudinary's raw `secure_url`. Now `f_auto,q_auto,w_1600,c_limit`
+is inserted into the delivery URL that gets stored. `f_auto` serves AVIF or
+WebP to browsers that accept them; `q_auto` picks quality per image. On a
+project whose stated reader is on a cheap phone on a weak connection, and whose
+largest asset on any page is the photo, that is not a nicety.
+
+Transforming on delivery rather than on upload keeps the original, so deciding
+later that 1600px was too small is a URL change rather than an unrecoverable
+loss. It is string surgery rather than the Cloudinary SDK because the SDK is a
+dependency tree for one line, in a browser bundle where every kilobyte is on
+the critical path.
+
+Two cases it deliberately does not touch: a URL not shaped like a Cloudinary
+upload, and anything on the `demo` cloud — that is Cloudinary's public demo
+account, which this project does not own, and generating a derived asset there
+bills somebody else's quota for no benefit.
+
+**3. The nightly orphan sweep did not exist.** The brief asks for it by name
+and gives the reason: the photo is uploaded before the ingest transaction
+opens, on purpose, so a slow third-party call never happens while the
+clustering engine holds `pg_advisory_xact_lock`. The cost is that every
+abandoned submission leaves an asset no row points at.
+
+It is built now, and the design is shaped by one fact: **this job deletes
+things, using a query, against a third party, on a schedule, unattended.** If
+the query is wrong the damage is silent and unrecoverable. So:
+
+- **Dry-run by default.** It logs what it would delete and deletes nothing.
+  Turning it destructive is an explicit act by somebody who has read a few runs.
+- **A 24-hour minimum age.** An asset uploaded seconds ago and not yet ingested
+  is indistinguishable from an orphan; without a floor this job would race
+  every live submission and win.
+- **A per-run cap of 200.** If the orphan query is ever wrong, this is the
+  difference between losing a few assets and emptying the account overnight.
+- **Absent credentials mean it does nothing**, which is the normal state locally
+  and anywhere uploads still go to the placeholder.
+
+**What is tested, and what is not.** The Admin API calls are not tested,
+deliberately — mocking Cloudinary's HTTP responses would test the mock. The
+query is tested, because that is the part that decides what gets deleted. The
+case that earns its keep is a stored URL carrying the new transformation
+segment: any matching strategy that reconstructs the URL or reads path segments
+positionally breaks when that transformation changes, and breaks by reporting
+live photos as orphans. Verified by mutation — replacing the substring match
+with positional `split_part` turns that test red with its own message about
+losing a citizen's evidence permanently, then green again on restore.
+
+Suite is 172 tests, green under both `alphabetical` and `reversealphabetical`.
+
+---
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.

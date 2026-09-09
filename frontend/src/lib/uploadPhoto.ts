@@ -35,6 +35,54 @@ export interface UploadResult {
 }
 
 /**
+ * Delivery transformation, inserted into the URL that gets STORED.
+ *
+ * `f_auto` serves AVIF or WebP to browsers that accept them and the original
+ * to those that do not; `q_auto` picks a quality per image rather than a fixed
+ * number. Together they typically halve the bytes again on top of the
+ * client-side compression, and on this project that is the whole point: the
+ * reader is assumed to be on a cheap phone on a weak connection, and the photo
+ * is the largest thing on the page.
+ *
+ * `w_1600,c_limit` is a ceiling, not a resize -- `c_limit` never enlarges, so
+ * an image already smaller passes through untouched. The composer downscales
+ * to 1600px before upload anyway; this stops a future change to that number
+ * from quietly shipping 4000px images to phones.
+ *
+ * Transforming on DELIVERY rather than on upload keeps the original in
+ * Cloudinary. That matters for the one case that actually comes up: deciding
+ * later that 1600px was too small, which is a URL change rather than an
+ * unrecoverable loss.
+ *
+ * Written as a string edit rather than with the Cloudinary SDK because the SDK
+ * is a dependency for one line of string manipulation, and this runs in the
+ * browser bundle where every kilobyte is on the critical path.
+ */
+const DELIVERY = "f_auto,q_auto,w_1600,c_limit";
+
+export function withDelivery(secureUrl: string): string {
+  // Never generate a derived asset on the `demo` account. That is Cloudinary's
+  // public demo cloud, which this project does not own, and it is where
+  // PLACEHOLDER_PHOTO_URL points when no preset is configured. Requesting a
+  // transformation there bills a derived asset against somebody else's quota
+  // for no benefit, and may simply 404 if they restrict derivations.
+  if (secureUrl.includes("/res.cloudinary.com/demo/")) return secureUrl;
+
+  // Only touch a URL shaped the way Cloudinary's upload API returns one. If
+  // the shape ever changes, return it untransformed rather than corrupt it --
+  // a slightly larger photo is a much better failure than a broken one.
+  const marker = "/image/upload/";
+  const at = secureUrl.indexOf(marker);
+  if (at === -1) return secureUrl;
+
+  const rest = secureUrl.slice(at + marker.length);
+  // Do not stack transformations if one is somehow already present.
+  if (/^[a-z]{1,2}_[^/]*\//.test(rest)) return secureUrl;
+
+  return `${secureUrl.slice(0, at + marker.length)}${DELIVERY}/${rest}`;
+}
+
+/**
  * Uploads and reports determinate progress.
  *
  * XMLHttpRequest rather than fetch, and that is not nostalgia: fetch has no
@@ -67,7 +115,7 @@ export function uploadPhoto(
     xhr.addEventListener("load", () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          const url = JSON.parse(xhr.responseText).secure_url as string;
+          const url = withDelivery(JSON.parse(xhr.responseText).secure_url as string);
           resolve({ url, placeholder: false });
         } catch {
           reject(new Error("The photo service returned something unexpected."));

@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend — 166 tests against real PostGIS
+    name: Backend — the full suite against real PostGIS
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -52,7 +52,7 @@ jobs:
       #    all against the same postgis/postgis:17-3.4 image, under TZ=UTC and
       #    as root. So the failure is not in the tests and not the platform.
       #  - Reproducing it locally with Ryuk reachable but slow produced
-      #    EXACTLY the signature this job reports: "Tests run: 166,
+      #    EXACTLY the signature this job reported at the time: "Tests run: 166,
       #    Errors: 121", BUILD FAILURE, surefire reports written (so an
       #    artifact is still uploaded), exit code 1. Every error was a context
       #    that never started, not an assertion.

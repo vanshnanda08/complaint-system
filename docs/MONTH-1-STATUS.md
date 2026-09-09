@@ -102,7 +102,7 @@ refuse. The full lifecycle is reachable through the API and is exercised by
 
 | | |
 |---|---|
-| Backend tests | **166**, Testcontainers against real PostGIS 17 |
+| Backend tests | **172**, Testcontainers against real PostGIS 17 |
 | Frontend tests | **53** unit |
 | Design decisions recorded | **40** |
 | Report flow, open to ticket | **3.0 s** (1.6 Mbps, 150 ms RTT, 4× CPU throttle) |
