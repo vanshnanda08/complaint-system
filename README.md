@@ -119,7 +119,7 @@ listed as 3, 4 and 5.
 | 2 | Clustering engine, candidate query, weighted centroid, extent cap, advisory lock, concurrency test, seed corpus and ground-truth labels | **done** |
 | 3 | State machine and `TransitionPolicy`, status history, staff queue, SLA clock, escalation ladder, ShedLock sweep, priority ageing, auth and RBAC | **done** |
 | 4 | Public read API, Next.js frontend: design tokens, shared components, twelve routes, report composer, cluster inspector, staff work view, auth with httpOnly refresh | **done** |
-| 5 | Deploy: Docker image, Supabase, Vercel, GitHub Actions, Cloudinary, Swagger UI | next |
+| 5 | Deploy: Docker image, Supabase, Vercel, GitHub Actions, keep-alive, backup and a tested restore, Swagger UI | **done**, except CI (red, reason now prints on the run page) and Cloudinary (needs credentials) |
 | 6 | Verification quorum, timeout sweep, auto-close, notifications, `/me/verify` | |
 | 7 | Moderation, public dashboard aggregates, SSE, ward detail | |
 | 8 | Evaluation: clustering accuracy against the ground-truth labels | |

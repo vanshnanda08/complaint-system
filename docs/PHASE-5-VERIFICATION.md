@@ -182,6 +182,26 @@ test code (DD-048).
 
 ---
 
+## 8. Point Render at `main` — 30 seconds, and worth doing
+
+Render still builds from **`phase-4-frontend-and-public-api`**, not `main`.
+
+Right now that is harmless because every push in this session went to both
+branches, so they are identical. It is a trap rather than a bug: the day
+somebody pushes to `main` alone, Vercel deploys the new frontend and Render
+keeps serving the old API, and the two halves disagree with nothing announcing
+it.
+
+Render → `civictrack-api` → Settings → Branch → `main` → Save.
+
+Until that is done, treat "push to `main`" as "push to both":
+
+```bash
+git push origin main && git push origin main:phase-4-frontend-and-public-api
+```
+
+---
+
 ## What is deliberately NOT done at one month
 
 Not oversights — decisions, each with a reason:
