@@ -146,6 +146,24 @@ export function SiteHeader() {
   // useThemeSync -- no-op in production.
   useThemeSync();
 
+  /*
+   * `md:self-start` on the <header> below is what makes `sticky` work, and its
+   * absence is why the sidebar scrolled away with the page.
+   *
+   * PageShell lays this out as a flex row, and a flex row stretches its
+   * children to the row's height by default. So the header was already as tall
+   * as the entire page -- and `position: sticky; top: 0` has nothing to do for
+   * an element as tall as its own containing block. It never stuck because it
+   * never needed to move.
+   *
+   * `align-self: flex-start` shrinks it to its own height, the inner
+   * `h-screen` makes that one viewport, and sticky then pins it while the
+   * column beside it scrolls. `overflow-y-auto` sits on the INNER element so a
+   * menu taller than the viewport scrolls inside the sidebar rather than
+   * pushing the sticky container past screen height, which would break it
+   * again for exactly the same reason.
+   */
+
   // Mobile disclosure. Closed by the link's own onClick rather than by an
   // effect watching `pathname` -- an event handler needs no effect, and
   // setting state inside an effect body is what the compiler rules reject.
@@ -165,7 +183,7 @@ export function SiteHeader() {
         onClick={close}
         aria-current={isActive ? "page" : undefined}
         className={`${ROW} ${
-          isActive ? "bg-brand-dark text-white font-semibold" : ROW_IDLE
+          isActive ? "bg-brand-dark text-brand-dark-ink font-semibold" : ROW_IDLE
         }`}
         style={{ minHeight: "var(--hit-min)" }}
       >
@@ -176,7 +194,7 @@ export function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-[500] bg-surface-raised border-b md:border-b-0 md:border-r border-rule shrink-0 w-full md:w-[var(--sidebar-width)]">
+    <header className="sticky top-0 z-[500] md:self-start bg-surface-raised border-b md:border-b-0 md:border-r border-rule shrink-0 w-full md:w-[var(--sidebar-width)]">
       <div className="md:h-screen md:overflow-y-auto flex flex-col p-4 md:p-6">
         <div className="flex items-center justify-between">
           <Link
@@ -184,7 +202,7 @@ export function SiteHeader() {
             onClick={close}
             className="text-ink no-underline flex items-center gap-3 px-2"
           >
-            <span className="w-9 h-9 rounded-xl bg-brand-primary flex items-center justify-center text-white flex-shrink-0">
+            <span className="w-9 h-9 rounded-xl bg-brand-primary flex items-center justify-center text-brand-ink flex-shrink-0">
               <svg
                 width="20"
                 height="20"

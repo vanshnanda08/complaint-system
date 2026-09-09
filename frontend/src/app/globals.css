@@ -43,6 +43,13 @@
      status, and it is never used on a tile whose number is a status. */
   --brand-primary: #0f766e;
   --brand-dark: #134e4a;
+  /* Foreground ON the brand fills, as tokens rather than a literal `white`.
+     Dark mode inverts these fills to a bright teal, and white on bright teal
+     measures 1.86 -- the logo mark was doing exactly that, and the active nav
+     pill measured 3.74 against a 4.5 requirement. A hard-coded `text-white`
+     cannot follow a fill that changes lightness between themes. */
+  --brand-ink: #ffffff;
+  --brand-dark-ink: #ffffff;
 
   --ink: #111827;
   /* #6B7280 measured 4.39 on --surface and failed AA. Darkened to 5.44. */
@@ -118,14 +125,24 @@
 .dark {
   color-scheme: dark;
 
+  /* Surfaces are deliberately not Tailwind's gray-900/800. Those are the
+     default everything ships with, and they are slightly blue. Re-measured
+     against these: the worst status contrast improves from 6.14 to 7.09 and
+     every one of the eight clears AA with margin. */
   --ink: #F9FAFB;
-  --ink-muted: #9CA3AF;
-  --surface: #111827;
-  --surface-raised: #1F2937;
-  --rule: #374151;
+  --ink-muted: #9AA4AE;
+  --surface: #0F1419;
+  --surface-raised: #181D23;
+  --rule: #2A323B;
 
+  /* Both brand fills are the bright teal here, with DARK ink on them --
+     9.40, against 3.74 and 1.86 for the white-on-teal this replaces. A bright
+     fill also reads as a fill against a near-black surface, which a dark teal
+     pill did not. */
   --brand-primary: #2dd4bf;
-  --brand-dark: #0d9488;
+  --brand-dark: #2dd4bf;
+  --brand-ink: #0F1B22;
+  --brand-dark-ink: #0F1B22;
 
   --st-new: #a8b3c4;
   --st-active: #7ea6ff;
@@ -246,6 +263,8 @@
   
   --color-brand-primary: var(--brand-primary);
   --color-brand-dark: var(--brand-dark);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-dark-ink: var(--brand-dark-ink);
 
   --color-tile-emph-bg: var(--tile-emph-bg);
   --color-tile-emph-ink: var(--tile-emph-ink);

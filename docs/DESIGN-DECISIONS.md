@@ -2200,6 +2200,56 @@ separation intact.
 
 ---
 
+## DD-055 — A sticky sidebar that never stuck, and two dark-mode brand colours below AA
+
+Three changes, one requested and two found while making it.
+
+**The sidebar scrolled away with the page.** It carried `sticky top-0` and had
+since it was built, and it had never worked. `PageShell` lays the page out as a
+flex row, and a flex row stretches its children to the row's height by default
+— so the header was already as tall as the entire document. `position: sticky`
+has nothing to do for an element as tall as its own containing block: it never
+stuck because it never needed to move.
+
+`md:self-start` shrinks it to its own height, the inner `h-screen` makes that
+one viewport, and sticky then pins it. `overflow-y-auto` stays on the INNER
+element deliberately — a menu taller than the viewport must scroll inside the
+sidebar rather than push the sticky container past screen height, which would
+reintroduce the same bug by the same mechanism. Verified by scrolling `/issues`
+to 1200px and measuring the logo's bounding box: moved 0px.
+
+**Two brand colours in dark mode were below AA, both introduced with the dark
+theme in DD-041.** That entry fixed the eight status colours and missed the
+brand entirely:
+
+| | measured | required |
+|---|---|---|
+| Active nav pill — white on `#0d9488` | **3.74** | 4.5 |
+| Logo mark — white glyph on `#2dd4bf` | **1.86** | 3.0 |
+
+The cause is the same in both cases: a hard-coded `text-white` cannot follow a
+fill that changes lightness between themes. Fixed with paired foreground
+tokens, `--brand-ink` and `--brand-dark-ink`, the same pattern already used for
+`--tile-emph-ink`. Both fills are the bright teal in dark mode with dark ink on
+them, measuring **9.40** — and a bright fill also reads as a fill against a
+near-black surface, which a dark teal pill did not.
+
+**The dark surfaces were Tailwind's gray-900/800**, which is what every project
+using Tailwind ships by default, and slightly blue. Replaced with `#0F1419` and
+`#181D23`. Re-measured all eight status colours against them: the worst
+improves from 6.14 to 7.09, and every one clears AA with margin.
+
+**And the requested copy removals.** The dashboard's intro paragraph and its
+"Not measured yet" section heading are gone; the unbuilt tiles remain in one
+continuous grid. Worth stating what that shifts: those tiles are now
+distinguished only by a dashed border, no fill, and a "will show …" sentence.
+That styling is load-bearing rather than decorative — flattening it to look
+like the live tiles would quietly turn "not measured" into "measured, and the
+answer is nothing", which is the claim the original paragraph existed to
+prevent. The reasoning is recorded in the component; only the prose is gone.
+
+---
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.

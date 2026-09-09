@@ -24,6 +24,13 @@ import type { ApiError } from "@/lib/api";
  * Tiles fail independently. `overdueCount` is nullable precisely so one failing
  * aggregate cannot blank the page -- so a null renders the sentence saying so,
  * never a dash. A dash in a number's place is read as a number.
+ *
+ * The page intro and the "Not measured yet" section heading were removed at the
+ * user's request: one dashboard, one grid, no prose. The unbuilt tiles keep
+ * their dashed border and their "will show ..." sentence, which is now the only
+ * thing distinguishing them -- so that styling is load-bearing rather than
+ * decorative, and flattening it back to look like the live tiles would quietly
+ * turn "not measured" into "measured, and the answer is nothing".
  */
 export default function DashboardPage() {
   const summary = useDashboardSummary();
@@ -31,10 +38,6 @@ export default function DashboardPage() {
   return (
     <PageShell wide>
       <h1 className="text-display">Accountability dashboard</h1>
-      <p className="mt-2 text-body" style={{ maxWidth: "var(--measure-prose)" }}>
-        Everything here is public and needs no account. The numbers are the same
-        ones the escalation system acts on, not a separate report.
-      </p>
 
       {summary.isPending && <SkeletonTileGrid label="Loading the dashboard" />}
 
@@ -89,14 +92,17 @@ export default function DashboardPage() {
             />
           </div>
 
-          <h2 className="mt-10 text-heading">Not measured yet</h2>
-          <p className="mt-1 text-dense text-ink-muted" style={{ maxWidth: "var(--measure-prose)" }}>
-            These are specified and not yet built. They are listed rather than
-            hidden, so what the dashboard does not currently tell you is as
-            visible as what it does.
-          </p>
-
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 u-stagger">
+          {/*
+              The unbuilt metrics carry no heading and no explanation any more.
+              They are still here, and they are still visibly different -- a
+              dashed border, no fill, and a sentence saying what each will show.
+              That is now the whole signal, and it has to carry the meaning the
+              removed paragraph used to spell out: these are specified and not
+              yet built, listed rather than hidden, so what the dashboard does
+              not tell you stays as visible as what it does. The reasoning is
+              unchanged; only the prose is gone.
+          */}
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 u-stagger">
             <MetricTile
               label="Median resolution time"
               pending="Will show the median days to resolve, by ward and by department."
