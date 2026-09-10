@@ -8,6 +8,8 @@ import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import { useBbox, useCategories } from "@/lib/queries";
 import { ISSUE_STATUSES, STATUS, isOverdue, statusWord } from "@/lib/status";
+import { IssueDetailPanel } from "@/components/IssueDetailPanel";
+import { useAuth } from "@/lib/auth";
 import type { ApiError } from "@/lib/api";
 
 /**
@@ -33,6 +35,18 @@ function MapInner() {
   const categories = useCategories();
 
   const [viewport, setViewport] = useState<Viewport | null>(null);
+
+  // Which pin is open. Kept out of the URL deliberately: the viewport and the
+  // filters are what somebody shares ("drainage issues in ward 12"), and a
+  // selected pin is a transient act of reading rather than part of that view.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Who sees the clustering geometry. A citizen gets a map with dots on it; the
+  // merge radius and the extent cap are facts about the engine, and drawing
+  // them for everybody turns a map into an instrument panel. See
+  // IssueDetailPanel for the same split on the numbers.
+  const { session } = useAuth();
+  const technical = !!session && session.role !== "CITIZEN";
 
   const bbox = useBbox(
     viewport
@@ -76,6 +90,11 @@ function MapInner() {
 
   const items = bbox.data?.items ?? [];
   const filtersActive = Boolean(status || category);
+
+  // The selected issue, or null once it has been filtered or panned out of the
+  // result set -- which is the right behaviour: a panel describing something no
+  // longer on the map is a panel about nothing.
+  const selected = items.find((i) => i.id === selectedId) ?? null;
 
   return (
     <PageShell wide>
@@ -143,26 +162,60 @@ function MapInner() {
       )}
 
       <div className="mt-4">
-        <MapCanvas
-          center={center}
-          zoom={zoom}
-          height={560}
-          onViewportChange={onViewportChange}
-          markers={items.map((i) => ({
-            id: i.id,
-            lat: i.lat,
-            lng: i.lng,
-            kind: "issue" as const,
-            color: STATUS[i.status].color,
-            overdue: isOverdue(i.status, i.effectiveDeadline),
-            label: `${i.publicRef} — ${i.categoryName}`,
-            popupHtml: `<div style="font:400 14px/20px system-ui">
-                <strong>${i.publicRef}</strong><br/>${i.categoryName}<br/>
-                ${statusWord(i.status)}${isOverdue(i.status, i.effectiveDeadline) ? " · Overdue" : ""}<br/>
-                <a href="/issues/${i.id}">Open this issue</a>
-              </div>`,
-          }))}
-        />
+        {/* Side by side once there is room, stacked below on a phone -- where a
+            560px map plus a panel beside it would leave neither usable. */}
+        <div className={`grid gap-4 ${selected ? "lg:grid-cols-[1fr_360px]" : "grid-cols-1"}`}>
+          <div>
+            <MapCanvas
+              center={center}
+              zoom={zoom}
+              height={560}
+              onViewportChange={onViewportChange}
+              markers={items.map((i) => ({
+                id: i.id,
+                lat: i.lat,
+                lng: i.lng,
+                kind: "issue" as const,
+                color: STATUS[i.status].color,
+                overdue: isOverdue(i.status, i.effectiveDeadline),
+                reporters: i.distinctReporterCount,
+                selected: i.id === selectedId,
+                label: `${i.publicRef} — ${i.categoryName}, ${statusWord(i.status)}`,
+                // A click opens the panel beside the map rather than a Leaflet
+                // popup. A popup is a second, differently-styled surface that
+                // cannot hold a photo, a history and an action -- and it
+                // covers the map it is anchored to.
+                onClick: () => setSelectedId(i.id),
+              }))}
+              circles={
+                technical && selected
+                  ? [
+                      {
+                        lat: selected.lat,
+                        lng: selected.lng,
+                        radiusM: selected.clusterExtentCapM,
+                        style: "extentCap" as const,
+                      },
+                      {
+                        lat: selected.lat,
+                        lng: selected.lng,
+                        radiusM: selected.mergeRadiusM,
+                        style: "merge" as const,
+                      },
+                    ]
+                  : []
+              }
+            />
+          </div>
+
+          {selected && (
+            <IssueDetailPanel
+              issue={selected}
+              technical={technical}
+              onClose={() => setSelectedId(null)}
+            />
+          )}
+        </div>
       </div>
 
       {bbox.data && items.length === 0 && (

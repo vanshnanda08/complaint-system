@@ -30,6 +30,15 @@ export interface MapMarker {
   color: string;
   overdue?: boolean;
   label?: string;
+  /**
+   * How many separate people reported this issue. The marker grows with it, so
+   * a nine-reporter drain reads before a one-reporter pothole across a whole
+   * city — which is the judgement a crew has to make at a glance and the one
+   * thing a uniform dot cannot express.
+   */
+  reporters?: number;
+  /** Draws the marker as the selected one: larger, with a ring. */
+  selected?: boolean;
   popupHtml?: string;
   onClick?: () => void;
 }

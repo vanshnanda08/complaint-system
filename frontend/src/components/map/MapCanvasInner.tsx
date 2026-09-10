@@ -34,9 +34,26 @@ import type { MapCanvasProps, MapMarker } from "./types";
  * the same glyph vocabulary the rest of the interface uses, so the map stays
  * legible in greyscale for the same reason the queue does.
  */
+/**
+ * Marker radius from the number of people who reported it.
+ *
+ * sqrt, not linear. A linear scale makes a nine-reporter cluster nine times the
+ * area of a one-reporter one, which swallows the street it sits on and buries
+ * its neighbours. sqrt keeps the perceived jump proportional to the count while
+ * the pin stays a pin, and the cap stops one very-reported issue dominating a
+ * whole ward.
+ */
+function markerRadius(reporters: number | undefined): number {
+  const n = Math.max(1, reporters ?? 1);
+  return Math.min(5.5 + Math.sqrt(n - 1) * 2.4, 12);
+}
+
 function markerIcon(m: MapMarker): L.DivIcon {
-  const size = m.kind === "centroid" ? 22 : 16;
+  const r = m.kind === "issue" ? markerRadius(m.reporters) : 5.5;
+  // The box has to hold the glyph plus its stroke plus the selection ring.
+  const size = m.kind === "centroid" ? 22 : Math.ceil(r * 2 + (m.selected ? 12 : 6));
   const stroke = m.overdue ? 3 : 1.5;
+  const c = size / 2;
 
   const svg =
     m.kind === "centroid"
@@ -46,15 +63,29 @@ function markerIcon(m: MapMarker): L.DivIcon {
            <path d="M11 0v6M11 16v6M0 11h6M16 11h6" stroke="${m.color}" stroke-width="2"/>
          </svg>`
       : m.kind === "report"
-        ? `<svg width="${size}" height="${size}" viewBox="0 0 16 16">
-             <circle cx="8" cy="8" r="5" fill="${m.color}" stroke="#fff" stroke-width="2"/>
+        ? `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+             <circle cx="${c}" cy="${c}" r="5" fill="${m.color}" stroke="#fff" stroke-width="2"/>
            </svg>`
         : // An issue on the browse map. Heavier stroke when overdue, so the
-          // breached ones read first across a whole city.
-          `<svg width="${size}" height="${size}" viewBox="0 0 16 16">
-             <circle cx="8" cy="8" r="5.5" fill="${m.color}" stroke="${
+          // breached ones read first across a whole city. A selected one gets a
+          // halo rather than a colour change, because its colour is its status.
+          `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+             ${
+               m.selected
+                 ? `<circle cx="${c}" cy="${c}" r="${r + 4}" fill="${m.color}" opacity="0.2"/>
+                    <circle cx="${c}" cy="${c}" r="${r + 4}" fill="none" stroke="${m.color}" stroke-width="1.5"/>`
+                 : ""
+             }
+             <circle cx="${c}" cy="${c}" r="${r}" fill="${m.color}" stroke="${
                m.overdue ? "#14181A" : "#ffffff"
              }" stroke-width="${stroke}"/>
+             ${
+               (m.reporters ?? 1) > 1
+                 ? `<text x="${c}" y="${c + 3.4}" text-anchor="middle"
+                          font-family="system-ui, sans-serif" font-size="${Math.min(r + 2, 11)}"
+                          font-weight="600" fill="#ffffff">${m.reporters}</text>`
+                 : ""
+             }
            </svg>`;
 
   return L.divIcon({
