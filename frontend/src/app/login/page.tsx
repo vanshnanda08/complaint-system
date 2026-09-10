@@ -1,120 +1,72 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { Suspense, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/PageShell";
-import { Button } from "@/components/Button";
-import { TextField } from "@/components/TextField";
-import { LoadingState } from "@/components/LoadingState";
+import { useSignIn } from "@/lib/signInDialog";
 import { useAuth } from "@/lib/auth";
-import { ApiError } from "@/lib/api";
-import { loginSchema, type LoginValues } from "@/lib/schemas";
 
 /**
- * Sign in (blueprint §3.10).
+ * `/login` is the dialog, not a second form.
  *
- * Single column, 44ch, email and password. Nothing else: no social login, no
- * marketing copy, no split-screen image.
+ * WHY THE ROUTE STILL EXISTS. A staff link like `/staff/issues/<id>` sent to
+ * somebody signed out has to land somewhere, and "somewhere" cannot be a modal
+ * on a page they were never on. So the route stays as the entry point for
+ * people ARRIVING at the site; the dialog serves people already using it.
  *
- * ONE error message for bad credentials, deliberately not distinguishing an
- * unknown account from a wrong password. The backend already refuses to
- * distinguish them -- `InvalidCredentialsException` covers unknown account,
- * wrong password, disabled account and an account seeded without a password --
- * because doing otherwise is a free account-enumeration oracle. This screen
- * renders the server's sentence verbatim rather than adding its own.
+ * WHY IT NO LONGER HAS ITS OWN FORM. It used to, and the sign-in dialog is
+ * mounted globally -- so this page carried two fields labelled "Email", two
+ * labelled "Password", and two submit buttons, one set of which was invisible.
+ * A closed `<dialog>` is `display: none`, so no user ever saw the duplicate;
+ * the route sweep did, and a duplicated form is a duplicated bug regardless of
+ * who can see it.
  *
- * No `<form>` posting to the server; an event handler (blueprint §6). The form
- * element is still a form for the keyboard's sake -- Enter should submit -- but
- * onSubmit is prevented.
+ * `?next=` is honoured on SUCCESS only. Somebody who opens this and changes
+ * their mind should not be thrown at a staff page they cannot read.
  */
 function LoginInner() {
-  const router = useRouter();
   const params = useSearchParams();
-  const { signIn } = useAuth();
+  const { openSignIn } = useSignIn();
+  const { session, initialising } = useAuth();
+  const next = params.get("next") ?? "/";
 
-  const [error, setError] = useState<string | null>(null);
-  const next = params.get("next") ?? "/me/reports";
-
-  const { register, handleSubmit, formState } = useForm<LoginValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
-  });
-
-  const submit = handleSubmit(async ({ email, password }) => {
-    setError(null);
-    try {
-      await signIn(email, password);
-      router.push(next);
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? (err.problem?.detail ?? "Those details were not accepted.")
-          : "Could not reach the server. Check your connection.",
-      );
-    }
-  });
+  useEffect(() => {
+    // Wait for the refresh check. Opening a sign-in dialog at somebody who is
+    // already signed in is the site failing to notice them.
+    if (initialising || session) return;
+    openSignIn({ mode: "in", next });
+  }, [initialising, session, openSignIn, next]);
 
   return (
     <PageShell>
-      <div className="flex flex-col items-center justify-center min-h-[70vh]">
-        <div className="w-full" style={{ maxWidth: "var(--measure-form)" }}>
-          <h1 className="text-display text-center">Sign in</h1>
-
-          <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-5">
-            <TextField
-              label="Email"
-              type="email"
-              autoComplete="email"
-              error={formState.errors.email?.message}
-              {...register("email")}
-            />
-            <TextField
-              label="Password"
-              type="password"
-              autoComplete="current-password"
-              error={formState.errors.password?.message}
-              {...register("password")}
-            />
-
-            {error && (
-              <p className="text-meta text-center" style={{ color: "var(--st-breached)" }} role="alert">
-                {error}
-              </p>
-            )}
-
-            <Button type="submit" disabled={formState.isSubmitting}>
-              {formState.isSubmitting ? "Signing in…" : "Sign in"}
-            </Button>
-          </form>
-
-          <p className="mt-6 text-dense text-center">
-            No account?{" "}
-            <Link href="/register" className="underline text-ink">
-              Create one
-            </Link>
-            . You can report a problem without one.
-          </p>
-        </div>
-      </div>
+      <h1 className="text-display">Sign in</h1>
+      <p className="mt-3 text-body" style={{ maxWidth: "var(--measure-prose)" }}>
+        {session
+          ? "You are already signed in."
+          : "The sign-in panel is open. You do not need an account to report a problem — only to follow what you reported."}
+      </p>
+      {!session && !initialising && (
+        <p className="mt-4">
+          <button
+            type="button"
+            className="text-body underline text-ink bg-transparent border-0 p-0 cursor-pointer"
+            onClick={() => openSignIn({ mode: "in", next })}
+          >
+            Open it again
+          </button>
+        </p>
+      )}
     </PageShell>
   );
 }
 
-/**
- * `useSearchParams` opts the subtree into client-side rendering, so Next
- * requires a Suspense boundary around it -- without one the whole route
- * refuses to prerender. The boundary is here rather than higher up so the
- * header and page frame still render server-side while the filters resolve.
- */
 export default function LoginPage() {
+  // useSearchParams needs a Suspense boundary or the build fails.
   return (
     <Suspense
       fallback={
         <PageShell>
-          <LoadingState label="Loading" />
+          <h1 className="text-display">Sign in</h1>
         </PageShell>
       }
     >

@@ -1,100 +1,63 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { Suspense, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/PageShell";
-import { Button } from "@/components/Button";
-import { TextField } from "@/components/TextField";
+import { useSignIn } from "@/lib/signInDialog";
 import { useAuth } from "@/lib/auth";
-import { ApiError } from "@/lib/api";
-import { registerSchema, type RegisterValues } from "@/lib/schemas";
 
 /**
- * Create account (blueprint §3.10). Same shape as sign in, one extra field.
+ * `/register` opens the same dialog on its register panel.
  *
- * The copy states what an account is actually for, because the honest answer
- * is narrow: reporting works without one, and the only thing an account adds
- * is the ability to be asked whether a fix worked (DD-006, DD-017).
+ * Sign in and register were two routes and two forms differing by one field.
+ * They are one panel now -- see SignInDialog -- because somebody who mistyped a
+ * password and somebody who has no account are one tap apart, and making that a
+ * page load was the wrong shape for the failure.
  */
-export default function RegisterPage() {
-  const router = useRouter();
-  const { register } = useAuth();
+function RegisterInner() {
+  const params = useSearchParams();
+  const { openSignIn } = useSignIn();
+  const { session, initialising } = useAuth();
+  const next = params.get("next") ?? "/";
 
-  const [error, setError] = useState<string | null>(null);
-
-  const { register: field, handleSubmit, formState } = useForm<RegisterValues>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: { fullName: "", email: "", password: "" },
-  });
-
-  const submit = handleSubmit(async (values) => {
-    setError(null);
-    try {
-      await register(values);
-      router.push("/me/reports");
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? (err.problem?.detail ?? "That account could not be created.")
-          : "Could not reach the server. Check your connection.",
-      );
-    }
-  });
+  useEffect(() => {
+    if (initialising || session) return;
+    openSignIn({ mode: "up", next });
+  }, [initialising, session, openSignIn, next]);
 
   return (
     <PageShell>
-      <div style={{ maxWidth: "var(--measure-form)" }}>
-        <h1 className="text-display">Create an account</h1>
-        <p className="mt-2 text-dense text-ink-muted">
-          You do not need one to report a problem. An account lets the system ask
-          you whether a fix actually worked.
+      <h1 className="text-display">Create an account</h1>
+      <p className="mt-3 text-body" style={{ maxWidth: "var(--measure-prose)" }}>
+        {session
+          ? "You are already signed in."
+          : "The panel is open. Reporting a problem needs no account at all — an account only lets you follow what you reported and confirm a fix."}
+      </p>
+      {!session && !initialising && (
+        <p className="mt-4">
+          <button
+            type="button"
+            className="text-body underline text-ink bg-transparent border-0 p-0 cursor-pointer"
+            onClick={() => openSignIn({ mode: "up", next })}
+          >
+            Open it again
+          </button>
         </p>
-
-        <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-5">
-          <TextField
-            label="Full name"
-            autoComplete="name"
-            error={formState.errors.fullName?.message}
-            {...field("fullName")}
-          />
-          <TextField
-            label="Email"
-            type="email"
-            autoComplete="email"
-            error={formState.errors.email?.message}
-            {...field("email")}
-          />
-          <TextField
-            label="Password"
-            type="password"
-            autoComplete="new-password"
-            hint="At least 8 characters."
-            error={formState.errors.password?.message}
-            {...field("password")}
-          />
-
-          {error && (
-            <p className="text-meta" style={{ color: "var(--st-breached)" }} role="alert">
-              {error}
-            </p>
-          )}
-
-          <Button type="submit" disabled={formState.isSubmitting}>
-            {formState.isSubmitting ? "Creating…" : "Create account"}
-          </Button>
-        </form>
-
-        <p className="mt-6 text-dense">
-          Already have one?{" "}
-          <Link href="/login" className="underline text-ink">
-            Sign in
-          </Link>
-          .
-        </p>
-      </div>
+      )}
     </PageShell>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <PageShell>
+          <h1 className="text-display">Create an account</h1>
+        </PageShell>
+      }
+    >
+      <RegisterInner />
+    </Suspense>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { SignInDialog } from "@/components/SignInDialog";
 
 /**
@@ -22,22 +23,50 @@ import { SignInDialog } from "@/components/SignInDialog";
  * The dialog is the path for people already using the site; the routes are the
  * path for people arriving at it.
  */
+export interface SignInOptions {
+  /** Open on the register panel rather than sign-in. */
+  mode?: "in" | "up";
+  /** Where to go once it succeeds. Defaults to staying put. */
+  next?: string;
+}
+
 interface SignInContext {
-  openSignIn: () => void;
+  openSignIn: (opts?: SignInOptions) => void;
 }
 
 const Ctx = createContext<SignInContext | null>(null);
 
 export function SignInProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
-  const openSignIn = useCallback(() => setOpen(true), []);
+  const [opts, setOpts] = useState<SignInOptions>({});
+
+  const openSignIn = useCallback((o?: SignInOptions) => {
+    setOpts(o ?? {});
+    setOpen(true);
+  }, []);
   const close = useCallback(() => setOpen(false), []);
+
+  // Only on success, and only when the caller asked for it. Closing without
+  // signing in must not navigate: somebody who opened the dialog from /issues
+  // and changed their mind belongs back on /issues, not wherever a `next`
+  // parameter happened to point.
+  const succeeded = useCallback(() => {
+    setOpen(false);
+    if (opts.next) router.replace(opts.next);
+  }, [opts.next, router]);
+
   const value = useMemo(() => ({ openSignIn }), [openSignIn]);
 
   return (
     <Ctx.Provider value={value}>
       {children}
-      <SignInDialog open={open} onClose={close} />
+      <SignInDialog
+        open={open}
+        mode={opts.mode ?? "in"}
+        onClose={close}
+        onSuccess={succeeded}
+      />
     </Ctx.Provider>
   );
 }

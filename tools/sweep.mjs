@@ -31,11 +31,19 @@ for (const signedIn of [false, true]) {
   const ctx = await b.newContext({ viewport:{width:1280,height:900} });
   const p = await ctx.newPage();
   if (signedIn) {
+    // Sign-in is a DIALOG now, and it is mounted globally -- so scope every
+    // selector to it. `getByLabel('Email')` unscoped matched two inputs the
+    // moment /login stopped carrying its own copy of the form, and this
+    // harness died on the strict-mode violation rather than on anything real.
     await p.goto(APP+'/login',{waitUntil:'networkidle'});
-    await p.getByLabel('Email').fill('head.roads@civictrack.example');
-    await p.getByLabel('Password').fill('demo1234');
-    await p.getByRole('button',{name:'Sign in'}).click();
-    await p.waitForURL('**/me/reports');
+    const dlg = p.locator('dialog');
+    await dlg.locator('input[autocomplete="username"]').fill('head.roads@civictrack.example');
+    await dlg.locator('input[autocomplete="current-password"]').fill('demo1234');
+    await dlg.getByRole('button',{name:'Sign in'}).click();
+    // The dialog closing IS the success signal; there is no navigation to await
+    // unless the caller asked for one.
+    await p.waitForFunction(() => !document.querySelector('dialog')?.open, null, { timeout: 15000 });
+    await p.waitForTimeout(500);
   }
   console.log(`\n--- ${signedIn ? 'signed in (SUPERVISOR)' : 'anonymous'} ---`);
   for (const route of routes) {

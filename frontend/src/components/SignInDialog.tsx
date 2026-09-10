@@ -30,15 +30,20 @@ import { TextField } from "@/components/TextField";
 export function SignInDialog({
   open,
   onClose,
+  onSuccess,
+  mode: initialMode = "in",
 }: {
   open: boolean;
   onClose: () => void;
+  /** Called only when sign-in or registration actually succeeded. */
+  onSuccess?: () => void;
+  mode?: "in" | "up";
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const { signIn, register } = useAuth();
   const titleId = useId();
 
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const [mode, setMode] = useState<"in" | "up">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -56,13 +61,13 @@ export function SignInDialog({
     const d = dialogRef.current;
     if (!d) return;
     if (open && !d.open) {
-      setMode("in");
+      setMode(initialMode);
       setError(null);
       setPassword("");
       d.showModal();
     }
     if (!open && d.open) d.close();
-  }, [open]);
+  }, [open, initialMode]);
 
   // Escape and the backdrop both fire `close`; the parent owns the state, so it
   // has to hear about either.
@@ -81,7 +86,9 @@ export function SignInDialog({
     try {
       if (mode === "in") await signIn(email, password);
       else await register({ email, password, fullName });
-      onClose();
+      // Success and dismissal are different events. Only this one may navigate.
+      if (onSuccess) onSuccess();
+      else onClose();
     } catch (err) {
       // The server's own words where it gave any. It knows why it refused and
       // this component does not.
