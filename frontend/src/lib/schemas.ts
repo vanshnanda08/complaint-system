@@ -108,8 +108,13 @@ export const registerSchema = loginSchema.extend({
   fullName: z.string().trim().min(1, { message: "Enter your name." }).max(160),
   password: z
     .string()
-    .min(8, { message: "Use at least 8 characters." })
-    .max(200),
+    // TEN, matching @Size(min = 10) on RegisterRequest. It was 8 here, so an
+    // eight-character password passed client validation and came back a 400
+    // from the server -- the client claiming a rule the server does not have
+    // is the same class of mismatch as DD-035, just in the friendlier
+    // direction. If the server's minimum moves, this moves with it.
+    .min(10, { message: "Use at least 10 characters." })
+    .max(100),
 });
 
 export type RegisterValues = z.infer<typeof registerSchema>;

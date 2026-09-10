@@ -123,10 +123,18 @@ describe("proofSchema", () => {
 });
 
 describe("registerSchema", () => {
-  it("requires a password of at least eight characters", () => {
+  it("requires a password of at least TEN characters, matching the server", () => {
+    // The boundary, not a value either side of it. This test previously used
+    // "short" (5) and "longenough" (10), which behave identically whether the
+    // minimum is 8 or 10 -- so it passed while the client said 8 and the
+    // server said 10, and an eight-character password failed with a 400 after
+    // the form had told the user it was fine.
+    //
+    // If RegisterRequest's @Size(min = 10) ever changes, this is the test that
+    // should go red.
     const base = { fullName: "A Citizen", email: "a@b.test" };
-    expect(registerSchema.safeParse({ ...base, password: "short" }).success).toBe(false);
-    expect(registerSchema.safeParse({ ...base, password: "longenough" }).success).toBe(true);
+    expect(registerSchema.safeParse({ ...base, password: "123456789" }).success).toBe(false);
+    expect(registerSchema.safeParse({ ...base, password: "1234567890" }).success).toBe(true);
   });
 
   it("rejects a malformed email", () => {
