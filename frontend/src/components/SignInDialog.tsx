@@ -122,7 +122,7 @@ export function SignInDialog({
         method="dialog"
         onSubmit={submit}
         className="bg-surface-raised border border-rule-strong p-6 flex flex-col gap-4"
-        style={{ borderRadius: "var(--radius)", width: "min(430px, calc(100vw - 32px))" }}
+        style={{ borderRadius: "var(--radius)", width: "min(430px, 100%)" }}
       >
         <div className="flex items-start justify-between gap-4">
           <h2 id={titleId} className="text-heading">

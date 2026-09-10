@@ -494,6 +494,55 @@
   max-height: none;
   color: var(--ink);
 }
+
+/*
+  Centred in the viewport, and the `[open]` on this selector is not optional.
+
+  A <dialog> is hidden by the user-agent rule `dialog:not([open]) { display:
+  none }`. Setting `display: grid` on the bare `.ct-dialog` would beat that
+  rule on specificity and the panel would sit on the page permanently, open or
+  not. Scoping the display switch to `[open]` keeps the UA's hiding rule
+  intact.
+
+  The dialog element itself fills the viewport and centres its single child, so
+  the backdrop click test in SignInDialog -- "did the click land on the dialog
+  rather than on its contents" -- keeps working, and now covers the whole
+  screen rather than a panel-sized box.
+
+  100dvh rather than 100vh: on a phone, 100vh is the viewport with the browser
+  chrome retracted, so a centred panel sits low and its bottom edge hides under
+  the address bar until you scroll.
+*/
+.ct-dialog[open] {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  display: grid;
+  /* Room for the panel to breathe, and a scroll if the register panel is
+     taller than the phone it is on.
+
+     The pairing to know about: `center` with `overflow` is historically the
+     data-loss combination, because an item taller than its container overflows
+     equally in BOTH directions and overflow past the block-START edge is not
+     scrollable -- the top of a tall panel becomes unreachable. `safe` centres
+     until it would overflow and start-aligns after that.
+
+     Measured, not assumed: Chromium already start-aligns a too-tall item in a
+     scroll container, so deleting `safe` changed nothing here at any panel
+     height I tried. It is kept as an explicit guarantee for engines that may
+     not do that on their own, having been confirmed to cost nothing where it
+     is redundant -- not because it is what makes this case work. The plain
+     `center` above is the fallback if `safe` is dropped as invalid. */
+  place-items: center;
+  place-items: safe center;
+  padding: 16px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  /* The panel scales and rises from the centre; the dialog box being
+     viewport-sized is what makes it scale about its own centre. */
+  animation: dialogIn var(--dur-base) var(--ease-decelerate);
+}
 .ct-dialog::backdrop {
   /* A literal rgba rather than a token: ::backdrop resolves custom properties
      against the ROOT element, not the dialog, which works today and is exactly
@@ -501,9 +550,6 @@
      themes because it is a shadow, not a surface. */
   background: rgb(20 22 26 / 0.45);
   backdrop-filter: blur(3px);
-}
-.ct-dialog[open] {
-  animation: dialogIn var(--dur-base) var(--ease-decelerate);
 }
 @keyframes dialogIn {
   from { opacity: 0; transform: translateY(10px) scale(0.985); }

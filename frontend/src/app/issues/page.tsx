@@ -4,7 +4,6 @@ import { Suspense } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/PageShell";
-import { ReportRail } from "@/components/ReportRail";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
@@ -63,22 +62,6 @@ function IssueIndexInner() {
 
   return (
     <PageShell wide>
-      {/*
-        The report rail, and the reason this layout was chosen: somebody who
-        came to report a problem is already reporting it, and somebody who came
-        to look sees the list. Neither has to navigate to reach the other.
-
-        `lg:` rather than `md:` -- the site sidebar already takes 260px at md,
-        and a third column at that width leaves the list too narrow to read.
-        Below lg the rail stacks ABOVE the list, so the first thing under a
-        thumb on a phone is still the category grid.
-      */}
-      <div className="grid gap-8 lg:grid-cols-[290px_1fr] items-start">
-        <div className="lg:sticky lg:top-4">
-          <ReportRail />
-        </div>
-
-        <div className="min-w-0">
       <h1 className="text-display">Issues</h1>
 
       <div className="mt-4 flex flex-wrap gap-3">
@@ -166,8 +149,6 @@ function IssueIndexInner() {
           </div>
         </>
       )}
-        </div>
-      </div>
     </PageShell>
   );
 
