@@ -1,19 +1,28 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { IBM_Plex_Sans, IBM_Plex_Mono, Newsreader } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
 /**
- * Fonts for TOKEN SET A ("Cool paper"), the active set in globals.css.
+ * Three faces, three jobs.
  *
- * To swap palettes: uncomment set B or C in globals.css and change the two
- * imports here to that set's named families, keeping the same CSS variable
- * names (--font-plex-sans / --font-plex-mono) so nothing else has to move.
+ * NEWSREADER for headings and figures. A reading serif with genuine optical
+ * sizing, which is why the dashboard's numerals look considered at 30px rather
+ * than merely large. It also does the thing this application needs a display
+ * face to do: it makes a page of municipal records look like a record rather
+ * than like an admin panel.
  *
- * The monospace is scoped tightly by convention, not by loading: it is applied
- * only to ticket references and coordinates (blueprint 1.4), never to labels or
- * metadata.
+ * IBM PLEX SANS for everything a person operates -- labels, rows, buttons. It
+ * has real tabular figures, which the queues and the dashboard depend on for
+ * column alignment.
+ *
+ * IBM PLEX MONO for ticket references and coordinates only, never for labels.
+ * A reference is read aloud over a phone, compared digit by digit and pasted
+ * into WhatsApp; fixed width serves all three.
+ *
+ * `display: "swap"` on all three: on the connection this project assumes, a
+ * blocking font load is a blank page.
  */
 const plexSans = IBM_Plex_Sans({
   subsets: ["latin"],
@@ -24,8 +33,16 @@ const plexSans = IBM_Plex_Sans({
 
 const plexMono = IBM_Plex_Mono({
   subsets: ["latin"],
-  weight: ["500"],
+  weight: ["400", "500"],
   variable: "--font-plex-mono",
+  display: "swap",
+});
+
+const newsreader = Newsreader({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  style: ["normal", "italic"],
+  variable: "--font-newsreader",
   display: "swap",
 });
 
@@ -39,7 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${plexSans.variable} ${plexMono.variable}`}
+      className={`${plexSans.variable} ${plexMono.variable} ${newsreader.variable}`}
       suppressHydrationWarning
     >
       <head>

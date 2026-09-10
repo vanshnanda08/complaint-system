@@ -95,7 +95,12 @@ public class IssueController {
 
     /** Force close. ADMIN only, and still subject to the seven-day guard. */
     @PostMapping("/{id}/close")
-    @PreAuthorize("hasRole('ADMIN')")
+    // SUPERVISOR as well as ADMIN, matching the transition table. The endpoint
+    // guard and the policy have to agree: a @PreAuthorize that is stricter
+    // than the table produces a 403 where the policy would have allowed it,
+    // and the client -- which mirrors the table -- would offer a button that
+    // always fails. That exact mismatch cost a phase once (DD-035).
+    @PreAuthorize("hasAnyRole('ADMIN','SUPERVISOR')")
     public IssueDto close(@PathVariable UUID id,
                           @Valid @RequestBody(required = false) TransitionRequest body,
                           @AuthenticationPrincipal Jwt jwt) {

@@ -71,7 +71,28 @@ public class TransitionPolicy {
         allow(PENDING_VERIFICATION, RESOLVED, of(SYSTEM), Guards.QUORUM_MET);
         allow(PENDING_VERIFICATION, REOPENED, of(SYSTEM), Guards.REJECTIONS_PREVAIL);
         allow(RESOLVED, REOPENED, of(SYSTEM), Guards.RECURRENCE_IN_WINDOW);
-        allow(RESOLVED, CLOSED, of(SYSTEM, ADMIN), Guards.SETTLED_7_DAYS);
+        // SUPERVISOR closes too, as of the role merge.
+        //
+        // The objection to this is real and was raised: a department head who
+        // can close their own department's breaches makes the overdue figure
+        // self-reported. What answers it is that SETTLED_7_DAYS is the guard
+        // actually doing the protective work -- an issue cannot be closed
+        // until it has sat RESOLVED for seven days, and that window is what
+        // gives a citizen time to object. Once it has passed with nobody
+        // objecting, who presses the button matters far less.
+        //
+        // The second answer is that the close is not silent: it writes an
+        // issue_status_history row naming the actor, on a page that needs no
+        // account to read. This project's position throughout is that
+        // publishing a weakness beats prohibiting it -- it publishes its own
+        // resolved-without-verification rate rather than burying it. Blocking
+        // the close by role while a supervisor could already REJECT anything
+        // they liked was the inconsistent half.
+        //
+        // What does NOT move: STAFF_MAY_NEVER_REACH still contains RESOLVED
+        // and CLOSED. A crew member marking their own work finished is the
+        // person doing the job certifying it, and no waiting period fixes that.
+        allow(RESOLVED, CLOSED, of(SYSTEM, ADMIN, SUPERVISOR), Guards.SETTLED_7_DAYS);
 
         // -- rejection, from any open state -----------------------------
         for (IssueStatus from : List.of(NEW, ACKNOWLEDGED, ASSIGNED, IN_PROGRESS,

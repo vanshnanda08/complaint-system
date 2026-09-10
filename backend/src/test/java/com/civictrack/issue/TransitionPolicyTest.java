@@ -71,7 +71,7 @@ class TransitionPolicyTest {
             new Edge(IssueStatus.PENDING_VERIFICATION, IssueStatus.RESOLVED, Set.of(Role.SYSTEM)),
             new Edge(IssueStatus.PENDING_VERIFICATION, IssueStatus.REOPENED, Set.of(Role.SYSTEM)),
             new Edge(IssueStatus.RESOLVED, IssueStatus.REOPENED, Set.of(Role.SYSTEM)),
-            new Edge(IssueStatus.RESOLVED, IssueStatus.CLOSED, Set.of(Role.SYSTEM, Role.ADMIN)),
+            new Edge(IssueStatus.RESOLVED, IssueStatus.CLOSED, Set.of(Role.SYSTEM, Role.ADMIN, Role.SUPERVISOR)),
             new Edge(IssueStatus.NEW, IssueStatus.REJECTED, Set.of(Role.SUPERVISOR, Role.ADMIN)),
             new Edge(IssueStatus.ACKNOWLEDGED, IssueStatus.REJECTED, Set.of(Role.SUPERVISOR, Role.ADMIN)),
             new Edge(IssueStatus.ASSIGNED, IssueStatus.REJECTED, Set.of(Role.SUPERVISOR, Role.ADMIN)),

@@ -12,6 +12,7 @@ import { ApiError, request } from "@/lib/api";
 import { isOverdue } from "@/lib/status";
 import { ageLabel } from "@/lib/format";
 import type { MyReportsPage } from "@/lib/types";
+import { useSignIn } from "@/lib/signInDialog";
 
 /**
  * My reports (blueprint §3.11).
@@ -27,6 +28,7 @@ import type { MyReportsPage } from "@/lib/types";
  * states it up front rather than surprising somebody here.
  */
 export default function MyReportsPageRoute() {
+  const { openSignIn } = useSignIn();
   const { session, initialising, authed } = useAuth();
 
   const reports = useQuery({
@@ -51,7 +53,7 @@ export default function MyReportsPageRoute() {
         <EmptyState
           message="Sign in to see the problems you have reported."
           actionLabel="Sign in"
-          actionHref="/login?next=/me/reports"
+          onAction={openSignIn}
         />
       </PageShell>
     );

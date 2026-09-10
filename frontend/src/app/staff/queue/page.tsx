@@ -16,6 +16,7 @@ import { ApiError, request } from "@/lib/api";
 import { isOverdue } from "@/lib/status";
 import type { QueueRow } from "@/lib/types";
 import Link from "next/link";
+import { useSignIn } from "@/lib/signInDialog";
 
 /**
  * Work queue (blueprint §3.14).
@@ -38,6 +39,7 @@ const TABS = [
 ];
 
 function StaffQueueInner() {
+  const { openSignIn } = useSignIn();
   const router = useRouter();
   const params = useSearchParams();
   const { session, initialising, authed } = useAuth();
@@ -66,7 +68,7 @@ function StaffQueueInner() {
         <EmptyState
           message="This is the municipal staff queue. Sign in with a staff account to see it."
           actionLabel="Sign in"
-          actionHref="/login?next=/staff/queue"
+          onAction={openSignIn}
         />
       </PageShell>
     );

@@ -13,14 +13,34 @@ import Link from "next/link";
 export interface EmptyStateProps {
   message: string;
   actionLabel?: string;
+  /** Navigate somewhere. Mutually exclusive with `onAction`. */
   actionHref?: string;
+  /**
+   * Do something in place instead of navigating -- opening the sign-in dialog,
+   * mostly. Preferred over `actionHref` for anything that does not genuinely
+   * change what page you are on: an empty state that says "sign in to see your
+   * reports" and then takes you off the page has answered a question with a
+   * detour.
+   */
+  onAction?: () => void;
 }
 
-export function EmptyState({ message, actionLabel, actionHref }: EmptyStateProps) {
+export function EmptyState({ message, actionLabel, actionHref, onAction }: EmptyStateProps) {
   return (
     <div className="py-8" style={{ maxWidth: "var(--measure-prose)" }}>
       <p className="text-body">{message}</p>
-      {actionLabel && actionHref && (
+      {actionLabel && onAction && (
+        <p className="mt-3">
+          <button
+            type="button"
+            onClick={onAction}
+            className="text-body underline text-ink bg-transparent border-0 p-0 cursor-pointer"
+          >
+            {actionLabel}
+          </button>
+        </p>
+      )}
+      {actionLabel && actionHref && !onAction && (
         <p className="mt-3">
           <Link href={actionHref} className="text-body underline text-ink">
             {actionLabel}

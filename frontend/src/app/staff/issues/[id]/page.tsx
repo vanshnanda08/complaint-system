@@ -26,6 +26,7 @@ import { ageLabel, reporters } from "@/lib/format";
 import { uploadPhoto } from "@/lib/uploadPhoto";
 import type { CompressedImage } from "@/lib/compressImage";
 import type { StaffIssue } from "@/lib/types";
+import { useSignIn } from "@/lib/signInDialog";
 
 /**
  * Work view (blueprint §3.15).
@@ -47,6 +48,7 @@ import type { StaffIssue } from "@/lib/types";
  */
 
 export default function StaffWorkViewPage({ params }: { params: Promise<{ id: string }> }) {
+  const { openSignIn } = useSignIn();
   const { id } = use(params);
   const { session, initialising, authed } = useAuth();
   const qc = useQueryClient();
@@ -124,7 +126,7 @@ export default function StaffWorkViewPage({ params }: { params: Promise<{ id: st
         <EmptyState
           message="This is the municipal work view. Sign in with a staff account to see it."
           actionLabel="Sign in"
-          actionHref={`/login?next=/staff/issues/${id}`}
+          onAction={openSignIn}
         />
       </PageShell>
     );

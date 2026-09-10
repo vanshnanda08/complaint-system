@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { AuthProvider } from "@/lib/auth";
 import { ComposerProvider } from "@/lib/composer";
+import { SignInProvider } from "@/lib/signInDialog";
 
 /**
  * Client-side providers.
@@ -31,7 +32,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <AuthProvider>
-        <ComposerProvider>{children}</ComposerProvider>
+        {/* Inside AuthProvider, because the dialog calls signIn. */}
+        <SignInProvider>
+          <ComposerProvider>{children}</ComposerProvider>
+        </SignInProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

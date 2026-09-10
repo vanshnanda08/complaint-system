@@ -51,12 +51,20 @@
   --brand-ink: #ffffff;
   --brand-dark-ink: #ffffff;
 
-  --ink: #111827;
-  /* #6B7280 measured 4.39 on --surface and failed AA. Darkened to 5.44. */
-  --ink-muted: #5B6472;
-  --surface: #F3F4F6;
+  /* Paper, not Tailwind grey. A very slightly warm off-white with a warm
+     near-black on it -- the pairing that makes a page of municipal records
+     read as a record. Every status colour below is re-measured against it. */
+  --ink: #14161A;
+  --ink-muted: #565B61;
+  /* The third ink, for micro-labels and field captions. #8A8A83 looked
+     right and measured 3.24 -- below AA, and these are real words rather
+     than decoration. 4.72/5.06. */
+  --ink-faint: #6F6F68;
+  --surface: #F7F7F4;
   --surface-raised: #FFFFFF;
-  --rule: #E5E7EB;
+  --surface-sunk: #EFEFEA;
+  --rule: #E2E1D9;
+  --rule-strong: #C9C7BC;
 
   /* The saturated colours that encode status.
      Re-measured after the surface moved from #F7F8F7 to #F3F4F6 -- a darker
@@ -68,17 +76,19 @@
      All clear WCAG AA on both surfaces. `pending` and `resolved` sit at 4.56
      with almost no margin: darken them before moving the surface again or
      using them below 13px. */
-  --st-new: #475569;
-  --st-active: #1d4ed8;
-  --st-pending: #b45309;
-  --st-resolved: #15803d;
-  --st-reopened: #6d28d9;
-  --st-breached: #b91c1c;
-  --st-closed: #57534e;
-  --st-rejected: #6b645f;  /* was #78716c -- 4.36 on the new surface, failed AA */
+  --st-new: #4A5568;
+  --st-active: #1D4ED8;
+  --st-pending: #A2570A;
+  --st-resolved: #15713C;
+  --st-reopened: #6828C4;
+  --st-breached: #B01818;
+  --st-closed: #55524C;
+  --st-rejected: #6B645F;
 
   --font-stack-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
   --font-stack-mono: var(--font-plex-mono), ui-monospace, "SF Mono", monospace;
+  /* Headings and figures. See the note in layout.tsx for why a serif. */
+  --font-stack-serif: var(--font-newsreader), Georgia, "Times New Roman", serif;
 
   /* Type. Sentence case throughout; no all-caps labels, no eyebrow text. */
   --size-display: 2rem;      --lh-display: 2.25rem;  --ls-display: -0.02em;
@@ -129,11 +139,16 @@
      default everything ships with, and they are slightly blue. Re-measured
      against these: the worst status contrast improves from 6.14 to 7.09 and
      every one of the eight clears AA with margin. */
-  --ink: #F9FAFB;
-  --ink-muted: #9AA4AE;
-  --surface: #0F1419;
-  --surface-raised: #181D23;
-  --rule: #2A323B;
+  --ink: #F3F2EE;
+  --ink-muted: #A7A49D;
+  /* Same correction on the dark ground: #7B7872 measured 3.79 on the
+     raised surface. 5.10/4.71. */
+  --ink-faint: #8B887F;
+  --surface: #15161A;
+  --surface-raised: #1C1E23;
+  --surface-sunk: #101115;
+  --rule: #2C2E34;
+  --rule-strong: #3D4047;
 
   /* Both brand fills are the bright teal here, with DARK ink on them --
      9.40, against 3.74 and 1.86 for the white-on-teal this replaces. A bright
@@ -144,14 +159,14 @@
   --brand-ink: #0F1B22;
   --brand-dark-ink: #0F1B22;
 
-  --st-new: #a8b3c4;
-  --st-active: #7ea6ff;
-  --st-pending: #f0b45f;
-  --st-resolved: #5fd48b;
-  --st-reopened: #c0a6ff;
-  --st-breached: #ff8a80;
-  --st-closed: #b5b0aa;
-  --st-rejected: #c2bbb4;
+  --st-new: #A9B4C4;
+  --st-active: #86A9FF;
+  --st-pending: #F0B45F;
+  --st-resolved: #5FD48B;
+  --st-reopened: #C0A6FF;
+  --st-breached: #FF8E82;
+  --st-closed: #B5B0AA;
+  --st-rejected: #C4BDB5;
 
   --tile-emph-bg: #7f1d1d;
   --tile-emph-ink: #fef2f2;
@@ -259,7 +274,10 @@
   --color-ink-muted: var(--ink-muted);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-sunk: var(--surface-sunk);
   --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-ink-faint: var(--ink-faint);
   
   --color-brand-primary: var(--brand-primary);
   --color-brand-dark: var(--brand-dark);
@@ -281,11 +299,16 @@
 
   --font-sans: var(--font-stack-sans);
   --font-mono: var(--font-stack-mono);
+  --font-serif: var(--font-stack-serif);
 
+  /* `text-display` and `text-heading` set the SERIF, so every h1 and h2 in
+     the application picks it up without touching a single component. The
+     weight drops from 600 to 500: Newsreader at 600 is heavy enough to look
+     shouted where Plex at 600 looked merely firm. */
   --text-display: var(--size-display);
   --text-display--line-height: var(--lh-display);
   --text-display--letter-spacing: var(--ls-display);
-  --text-display--font-weight: 600;
+  --text-display--font-weight: 500;
 
   --text-heading: var(--size-heading);
   --text-heading--line-height: var(--lh-heading);
@@ -456,6 +479,70 @@
 }
 
 /* --------------------------------------------------------------------------
+   The dialog
+   --------------------------------------------------------------------------
+   A <dialog> gets almost no default styling worth keeping and two defaults
+   worth removing: a border, and a max-width/height that clips a tall panel on
+   a short screen. The backdrop is a pseudo-element, so it cannot be reached
+   from a class -- it has to be styled here.
+   -------------------------------------------------------------------------- */
+.ct-dialog {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  max-width: none;
+  max-height: none;
+  color: var(--ink);
+}
+.ct-dialog::backdrop {
+  /* A literal rgba rather than a token: ::backdrop resolves custom properties
+     against the ROOT element, not the dialog, which works today and is exactly
+     the sort of subtlety that breaks quietly. A fixed scrim is safe in both
+     themes because it is a shadow, not a surface. */
+  background: rgb(20 22 26 / 0.45);
+  backdrop-filter: blur(3px);
+}
+.ct-dialog[open] {
+  animation: dialogIn var(--dur-base) var(--ease-decelerate);
+}
+@keyframes dialogIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* --------------------------------------------------------------------------
+   Type roles
+   --------------------------------------------------------------------------
+   The serif is attached HERE rather than in each component, so a heading is a
+   heading everywhere and nothing has to remember to ask for it. `.text-figure`
+   is the dashboard's big numeral: Newsreader with tabular figures on, which is
+   what keeps a column of counts aligned.
+   -------------------------------------------------------------------------- */
+.text-display,
+.text-heading,
+.text-figure {
+  font-family: var(--font-stack-serif);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.text-figure {
+  font-size: 1.9rem;
+  line-height: 1.1;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+}
+/* An uppercase micro-label: the key of a key/value pair, a section eyebrow.
+   Mono, because these sit beside data and a proportional face makes a column
+   of them ragged. */
+.text-key {
+  font-family: var(--font-stack-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+/* --------------------------------------------------------------------------
    Base
    -------------------------------------------------------------------------- */
 html {
@@ -524,6 +611,8 @@ body {
     animation: none !important;
     background: var(--rule);
   }
+
+  .ct-dialog[open] { animation: none !important; }
 
   /* Entrances become instant appearances rather than invisible elements. */
   .u-rise, .u-fade, .u-stagger > * {

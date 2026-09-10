@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useTheme, useThemeSync, toggleTheme } from "@/lib/theme";
 import { useState } from "react";
+import { useSignIn } from "@/lib/signInDialog";
 
 /**
  * The primary navigation.
@@ -170,6 +171,9 @@ export function SiteHeader() {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
 
+  // Sign-in is a dialog now, not /login. See lib/signInDialog for why.
+  const { openSignIn } = useSignIn();
+
   const renderLink = (l: NavLink) => {
     if (l.staffOnly && !isStaff) return null;
     // Exact match, or a child route under it. Plain `startsWith` would light
@@ -321,15 +325,18 @@ export function SiteHeader() {
               </>
             )}
             {!initialising && !session && (
-              <Link
-                href="/login"
-                onClick={close}
+              <button
+                type="button"
+                onClick={() => {
+                  close();
+                  openSignIn();
+                }}
                 className={`${ROW} ${ROW_IDLE}`}
                 style={{ minHeight: "var(--hit-min)" }}
               >
                 <Icon name="signIn" />
                 <span>Sign in</span>
-              </Link>
+              </button>
             )}
 
             <button
