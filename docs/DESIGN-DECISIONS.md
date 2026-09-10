@@ -2323,6 +2323,38 @@ Suite is 172 tests, green under both `alphabetical` and `reversealphabetical`.
 
 ---
 
+## DD-057 — a transition invalidates every view it changes, not the one on screen
+
+Completing an action on the staff work view invalidated `["staff"]` and
+`["issue", id]`, which are the two queries that page reads. Both were correct
+and the set was incomplete.
+
+A status change is not local to the page that made it. It moves the issue
+between the public list's status filters, recolours its marker on the map, and
+-- when the transition pauses or restarts the SLA clock -- changes the
+dashboard's overdue count. Those three queries carry a 30 second stale time, so
+they kept serving the previous value until it expired.
+
+Measured before the change: with the dashboard already primed, submitting a
+breached issue for verification took the API from 38 overdue to 37 while the
+dashboard tile still read 38 on a client-side navigation straight back, and it
+corrected itself 30 seconds later. After the change the same sequence read 36
+against an API value of 36 with no wait.
+
+That window was not a stale cache doing its job. The user had just performed the
+action, so the one moment they are certain the number should have moved is the
+one moment the interface disagreed with them, which reads as the action having
+been ignored. A stale time is a claim about how fast a fact changes on its own;
+it should not apply to a fact this client just changed itself.
+
+The three added keys are prefixes rather than exact keys -- `keys.issues(f)` is
+`["issues", f]` and `keys.bbox(p)` is `["bbox", p]` -- so every filter and
+viewport variant is invalidated, not only the combination currently mounted.
+
+The stale times themselves are unchanged, and polling was not introduced. The
+fix is narrower than either: the client already knew the data had changed,
+because it was the one that changed it.
+
 ## Appendix — standing rules
 
 These are project-wide invariants, not decisions about a particular feature.

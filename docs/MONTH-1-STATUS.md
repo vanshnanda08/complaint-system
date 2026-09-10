@@ -15,7 +15,11 @@ prints.
 Deployed corpus: **110 issues** from **250 reports**, 72 status-history rows,
 across eight of the nine statuses -- CLOSED 33, NEW 26, RESOLVED 18,
 ACKNOWLEDGED 10, IN_PROGRESS 8, ASSIGNED 8, PENDING_VERIFICATION 5, REJECTED 2.
-51 resolved or closed in total, 18 currently overdue.
+51 resolved or closed in total. Currently overdue was 18 when this was
+written and **rises on its own as deadlines lapse** -- it was 27 a week
+later with nothing touched. It is the one figure here that is a function of
+when you read it rather than of the corpus, so check it against
+`/api/v1/dashboard/summary` rather than against this line.
 
 It was 802 issues from 2,000 reports until phase 5. The reduction was
 deliberate, and it is what exposed DD-047: the old corpus only ever contained

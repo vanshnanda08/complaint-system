@@ -12,6 +12,7 @@ import { PriorityBadge } from "@/components/PriorityBadge";
 import { DeadlineCountdown } from "@/components/DeadlineCountdown";
 import { Button } from "@/components/Button";
 import { PhotoUploader } from "@/components/PhotoUploader";
+import { keys } from "@/lib/queries";
 import { UploadProgress } from "@/components/UploadProgress";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
@@ -106,8 +107,27 @@ export default function StaffWorkViewPage({ params }: { params: Promise<{ id: st
     onSuccess: () => {
       proofForm.reset();
       setProof(null);
+      /*
+       * Everything a transition changes, not just what is on screen.
+       *
+       * A status change is not local to this page. It moves the issue between
+       * the public list's status filters, recolours its marker on the map, and
+       * -- when the transition pauses or restarts the SLA clock -- moves the
+       * dashboard's overdue count. Invalidating only `staff` and this issue
+       * left those three showing the previous number until their own 30s stale
+       * time expired, which reads as the application ignoring the action that
+       * was just taken.
+       *
+       * These are key PREFIXES: `keys.issues(filters)` is `["issues", filters]`
+       * and `keys.bbox(params)` is `["bbox", params]`, so the bare prefix
+       * matches every filter and viewport variant rather than only the one
+       * currently mounted.
+       */
       void qc.invalidateQueries({ queryKey: ["staff"] });
       void qc.invalidateQueries({ queryKey: ["issue", id] });
+      void qc.invalidateQueries({ queryKey: ["issues"] });
+      void qc.invalidateQueries({ queryKey: ["bbox"] });
+      void qc.invalidateQueries({ queryKey: keys.summary() });
     },
     onError: (e) => setProblem(e instanceof ApiError ? e : null),
   });
