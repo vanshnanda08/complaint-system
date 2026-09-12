@@ -31,3 +31,6 @@ backend/.env.seed
 # Database dumps written by scripts/backup.sh. They contain the full corpus and
 # have no business in version control.
 backups/
+
+# Project documents are kept locally, not in the repository.
+docs/
