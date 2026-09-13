@@ -104,6 +104,24 @@ class PublicApiIT extends IntegrationTestBase {
                 .andExpect(jsonPath("$.detail").value("No issue with reference CT-1999-000001"));
     }
 
+    /**
+     * A ticket reference pasted where an id belongs is the URL a citizen
+     * actually types, because the reference is the string they were given.
+     * It must come back as a problem document the client can read: Spring's
+     * own type-mismatch response has no body, and a bodiless 400 is
+     * indistinguishable at the client from a dropped connection.
+     */
+    @Test
+    @DisplayName("an id that is not a UUID is a readable 400, not a bodiless one")
+    void malformedIdIsAReadableProblem() throws Exception {
+        mvc.perform(get("/api/v1/public/issues/{id}", "CT-2026-000911"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Malformed parameter"))
+                .andExpect(jsonPath("$.type").value("https://civictrack.example/problems/malformed-parameter"))
+                .andExpect(jsonPath("$.parameter").value("id"))
+                .andExpect(jsonPath("$.detail").value("'id' is not a UUID."));
+    }
+
     @Test
     @DisplayName("a known reference resolves to the same issue as its id")
     void referenceResolvesToTheIssue() throws Exception {

@@ -11,6 +11,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.net.URI;
 import java.util.stream.Collectors;
@@ -140,6 +141,37 @@ public class GlobalExceptionHandler {
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
         pd.setType(URI.create(BASE + "account-exists"));
         pd.setTitle("Account already exists");
+        return pd;
+    }
+
+    /**
+     * A path variable or query parameter that could not be converted to the
+     * type the handler declares -- a ticket reference where a UUID belongs,
+     * most often, because somebody pasted the reference they were given into
+     * the URL bar.
+     *
+     * <p>Without this handler Spring answers with its own error response,
+     * which carries no RFC 7807 body at all. The client cannot tell an
+     * unparseable id from a dropped connection, so it renders "the server
+     * could not be reached" over a request the server received, understood
+     * and correctly refused. That was a real defect on /issues/{id}: a
+     * reference-shaped URL produced a connection error.
+     *
+     * <p>400 rather than 404: the resource is not missing, the request is
+     * malformed. The {@code parameter} property lets a client say which part
+     * of the URL was wrong without parsing prose.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ProblemDetail onTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String required = ex.getRequiredType() == null ? "the expected type"
+                : ex.getRequiredType().getSimpleName();
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST,
+                "'" + ex.getName() + "' is not a " + required + ".");
+        pd.setType(URI.create(BASE + "malformed-parameter"));
+        pd.setTitle("Malformed parameter");
+        pd.setProperty("parameter", ex.getName());
+        pd.setProperty("requiredType", required);
         return pd;
     }
 

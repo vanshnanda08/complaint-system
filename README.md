@@ -22,8 +22,8 @@ next.
 | Frontend | https://civic-track-six.vercel.app |
 | API | https://civictrack-api.onrender.com |
 | API docs (Swagger) | https://civictrack-api.onrender.com/swagger-ui/index.html |
-| Backend tests | **172** passing, against real PostGIS via Testcontainers |
-| Frontend tests | **58** passing, plus lint, typecheck and production build in CI |
+| Backend tests | **173** passing, against real PostGIS via Testcontainers |
+| Frontend tests | **63** passing, plus lint, typecheck and production build in CI |
 | CI | Green on `main` (GitHub Actions) |
 | Deployed corpus | 110 issues from 250 reports, across eight of the nine statuses |
 
@@ -176,8 +176,8 @@ account at all.
 ## Testing
 
 ```bash
-cd backend  && mvn clean test    # 172 integration and unit tests, Testcontainers
-cd frontend && npm run test      # 58 unit tests
+cd backend  && mvn clean test    # 173 integration and unit tests, Testcontainers
+cd frontend && npm run test      # 63 unit tests
 cd frontend && npm run lint      # includes the Leaflet import boundary rule
 ```
 

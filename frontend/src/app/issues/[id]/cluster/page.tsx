@@ -10,7 +10,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { useCategories, useIssue, useIssueReports } from "@/lib/queries";
 import { absoluteDateTime, metres } from "@/lib/format";
 import type { ClusterDecision, PublicReport } from "@/lib/types";
-import type { ApiError } from "@/lib/api";
+import { isUnknownTicket, type ApiError } from "@/lib/api";
 
 /**
  * Cluster inspector (blueprint §3.7), read-only.
@@ -64,6 +64,27 @@ export default function ClusterInspectorPage({ params }: { params: Promise<{ id:
   }
 
   if (issue.isError || reports.isError) {
+    const failure = (issue.error ?? reports.error) as ApiError;
+
+    // Same rule as the issue screen: an id the server could not parse is a
+    // wrong URL, and saying "the server could not be reached" about it sends
+    // the reader to check their connection over a typo.
+    if (isUnknownTicket(failure)) {
+      return (
+        <PageShell>
+          <h1 className="text-display">No such ticket</h1>
+          <p className="mt-3 text-body">
+            Nothing here has that reference. It may have been typed slightly wrong.
+          </p>
+          <p className="mt-4">
+            <Link href="/issues" className="text-body underline text-ink">
+              Search the issue index
+            </Link>
+          </p>
+        </PageShell>
+      );
+    }
+
     return (
       <PageShell wide>
         <ErrorState

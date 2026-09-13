@@ -69,6 +69,29 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return (await res.json()) as T;
 }
 
+/**
+ * Whether a failed issue lookup means "no such ticket" rather than "the
+ * request did not get through".
+ *
+ * <p>Two statuses mean it. 404 is the obvious one. 400 with the server's
+ * `malformed-parameter` problem is the other, and it is the case a reader
+ * actually hits: pasting a ticket reference -- CT-2026-000911, the string the
+ * citizen was given -- where the id belongs. Treating that as a transport
+ * failure told somebody their connection had dropped when what had happened
+ * was that they typed a reference into a URL that takes an id.
+ *
+ * The problem `type` is matched, not the status alone: a 400 from somewhere
+ * else is still a 400 and should not claim the ticket does not exist.
+ */
+export function isUnknownTicket(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  if (error.status === 404) return true;
+  return (
+    error.status === 400 &&
+    error.problem?.type === "https://civictrack.example/problems/malformed-parameter"
+  );
+}
+
 /** Drops empty values so a blank filter is an absent filter, not `?status=`. */
 export function query(params: Record<string, string | number | boolean | null | undefined>): string {
   const sp = new URLSearchParams();

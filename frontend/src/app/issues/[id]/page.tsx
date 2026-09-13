@@ -14,7 +14,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { useIssue, useIssueHistory, useIssueReports } from "@/lib/queries";
 import { STATUS, isOverdue } from "@/lib/status";
 import { absoluteDateTime, ageLabel, coordinates, metres, reporters } from "@/lib/format";
-import type { ApiError } from "@/lib/api";
+import { isUnknownTicket, type ApiError } from "@/lib/api";
 
 /**
  * Issue detail (blueprint §3.6): everything publicly known about one work item.
@@ -40,11 +40,13 @@ export default function IssueDetailPage({ params }: { params: Promise<{ id: stri
 
   if (issue.isError) {
     const err = issue.error as ApiError;
-    // 404 renders the not-found screen with a way onward, never a redirect
-    // (blueprint §3.6). A redirect would destroy the URL somebody was sent.
+    // A missing ticket renders the not-found screen with a way onward, never
+    // a redirect (blueprint §3.6). A redirect would destroy the URL somebody
+    // was sent. "Missing" includes an id the server could not parse -- a
+    // pasted ticket reference -- which is a wrong URL, not a dead connection.
     return (
       <PageShell>
-        {err?.status === 404 ? (
+        {isUnknownTicket(err) ? (
           <>
             <h1 className="text-display">No such ticket</h1>
             <p className="mt-3 text-body">
