@@ -5,7 +5,10 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useTheme, useThemeSync, toggleTheme } from "@/lib/theme";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSignIn } from "@/lib/signInDialog";
+import { request } from "@/lib/api";
+import { keys } from "@/lib/queries";
 
 /**
  * The primary navigation.
@@ -40,7 +43,7 @@ const MENU_LINKS: NavLink[] = [
   { href: "/staff/queue", label: "Work queue", icon: "inbox", staffOnly: true },
 ];
 
-type IconName = "grid" | "list" | "pin" | "flag" | "inbox" | "signOut" | "signIn";
+type IconName = "grid" | "list" | "pin" | "flag" | "inbox" | "bell" | "signOut" | "signIn";
 
 /** Decorative throughout: every icon here sits beside its own text label. */
 function Icon({ name }: { name: IconName }) {
@@ -98,6 +101,13 @@ function Icon({ name }: { name: IconName }) {
           <path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" />
         </svg>
       );
+    case "bell":
+      return (
+        <svg {...common}>
+          <path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 01-3.46 0" />
+        </svg>
+      );
     case "signOut":
       return (
         <svg {...common}>
@@ -138,7 +148,7 @@ const ROW =
 const ROW_IDLE = "bg-transparent text-ink-muted hover:bg-rule hover:text-ink";
 
 export function SiteHeader() {
-  const { session, signOut, initialising } = useAuth();
+  const { session, signOut, initialising, authed } = useAuth();
   const pathname = usePathname();
   const theme = useTheme();
   const isStaff = session && session.role !== "CITIZEN";
@@ -173,6 +183,21 @@ export function SiteHeader() {
 
   // Sign-in is a dialog now, not /login. See lib/signInDialog for why.
   const { openSignIn } = useSignIn();
+
+  // The unread badge. Polled, because until the event stream lands (phase 7)
+  // nothing pushes; once a minute is cheap -- the endpoint is one index-only
+  // count -- and a request to verify has a 72-hour window, so a minute's lag
+  // costs nobody anything.
+  const unread = useQuery({
+    queryKey: keys.myUnread(session?.userId),
+    queryFn: () =>
+      authed((token) => request<{ unread: number }>("/me/notifications/unread-count", { token })),
+    enabled: Boolean(session),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const unreadCount = unread.data?.unread ?? 0;
+  const notificationsActive = pathname === "/me/notifications";
 
   const renderLink = (l: NavLink) => {
     if (l.staffOnly && !isStaff) return null;
@@ -301,6 +326,25 @@ export function SiteHeader() {
           <div className="flex flex-col gap-1 mt-8 md:mt-auto md:pt-8">
             {!initialising && session && (
               <>
+                <Link
+                  href="/me/notifications"
+                  onClick={close}
+                  aria-current={notificationsActive ? "page" : undefined}
+                  className={`${ROW} ${
+                    notificationsActive ? "bg-brand-dark text-brand-dark-ink font-semibold" : ROW_IDLE
+                  }`}
+                  style={{ minHeight: "var(--hit-min)" }}
+                >
+                  <Icon name="bell" />
+                  <span className="flex-1">Notifications</span>
+                  {unreadCount > 0 && (
+                    // Ink, not a status colour: unread is not a status.
+                    <span className="min-w-6 px-2 rounded-full bg-ink text-surface-raised text-meta text-center font-semibold">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                      <span className="sr-only"> unread</span>
+                    </span>
+                  )}
+                </Link>
                 <Link
                   href="/me/reports"
                   onClick={close}

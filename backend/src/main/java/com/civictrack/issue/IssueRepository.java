@@ -276,6 +276,36 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
 
     List<Issue> findByIdIn(Collection<UUID> ids);
 
+    // ------------------------------------------------------------------
+    // phase 6: the verification settlement sweep
+    //
+    // Unlocked id lists, unlike lockBreachedIssueIds. Each id is then settled
+    // in its own transaction that takes the row lock and re-checks the status
+    // under it, so a row another worker already settled is skipped rather
+    // than settled twice. That re-check, not this query, is the correctness
+    // measure; this only decides what is worth looking at.
+    // ------------------------------------------------------------------
+
+    /** Issues whose verification window closed at or before {@code cutoff}. */
+    @Query(value = """
+            SELECT i.id FROM issues i
+            WHERE i.status = 'PENDING_VERIFICATION'
+              AND i.clock_paused_at <= CAST(:cutoff AS timestamptz)
+            ORDER BY i.clock_paused_at ASC
+            LIMIT :batch
+            """, nativeQuery = true)
+    List<UUID> findVerificationTimeoutIds(@Param("cutoff") Instant cutoff, @Param("batch") int batch);
+
+    /** Issues resolved at or before {@code cutoff} and not yet closed. */
+    @Query(value = """
+            SELECT i.id FROM issues i
+            WHERE i.status = 'RESOLVED'
+              AND i.resolved_at <= CAST(:cutoff AS timestamptz)
+            ORDER BY i.resolved_at ASC
+            LIMIT :batch
+            """, nativeQuery = true)
+    List<UUID> findAutoCloseIds(@Param("cutoff") Instant cutoff, @Param("batch") int batch);
+
     /** Whether this citizen is one of the issue's reporters. Used by the verify guard. */
     @Query(value = """
             SELECT EXISTS (SELECT 1 FROM reports r
@@ -486,6 +516,51 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
     @Query(value = "SELECT COUNT(*) FROM issues WHERE status IN ('RESOLVED','CLOSED')",
            nativeQuery = true)
     long countResolved();
+
+    /**
+     * Per department: how its claimed fixes fared with citizens (DD-006).
+     *
+     * <ul>
+     *   <li>{@code resolved} -- issues now RESOLVED or CLOSED. Denominator of
+     *       the unverified rate, as blueprint 3.8 specifies.</li>
+     *   <li>{@code unverified} -- of those, how many resolved through the
+     *       timeout with no vote cast.</li>
+     *   <li>{@code fixesClaimed} -- issues ever submitted for verification.
+     *       Denominator of the reopen rate. Not {@code resolved}: an issue
+     *       that was reopened and is now back in progress is in the numerator
+     *       and would be missing from a resolved-only denominator, so the rate
+     *       could exceed 100%.</li>
+     *   <li>{@code reopened} -- of those, how many were reopened at least
+     *       once: a fix that did not hold.</li>
+     * </ul>
+     *
+     * Every department is listed, including those with no figures yet, so an
+     * absent row never reads as a perfect one.
+     */
+    @Query(value = """
+            SELECT d.id   AS departmentId,
+                   d.name AS departmentName,
+                   COUNT(i.id) FILTER (WHERE i.status IN ('RESOLVED','CLOSED'))        AS resolved,
+                   COUNT(i.id) FILTER (WHERE i.status IN ('RESOLVED','CLOSED')
+                                         AND i.resolved_without_verification)          AS unverified,
+                   COUNT(i.id) FILTER (WHERE i.verification_round > 0)                 AS fixesClaimed,
+                   COUNT(i.id) FILTER (WHERE i.verification_round > 0
+                                         AND i.reopen_count > 0)                       AS reopened
+            FROM departments d
+            LEFT JOIN issues i ON i.department_id = d.id
+            GROUP BY d.id, d.name
+            ORDER BY d.name ASC
+            """, nativeQuery = true)
+    List<DepartmentAccountabilityRow> findDepartmentAccountability();
+
+    interface DepartmentAccountabilityRow {
+        UUID getDepartmentId();
+        String getDepartmentName();
+        long getResolved();
+        long getUnverified();
+        long getFixesClaimed();
+        long getReopened();
+    }
 
     /**
      * The staff queue, with the display columns blueprint 3.14 asks for.

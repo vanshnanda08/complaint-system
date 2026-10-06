@@ -238,3 +238,92 @@ export interface ProblemDetail {
   detail?: string;
   [key: string]: unknown;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 6: citizen verification and notifications
+// ---------------------------------------------------------------------------
+
+export type Verdict = "FIXED" | "NOT_FIXED";
+
+/**
+ * `GET /me/verifications/{id}`: everything the verify screen needs.
+ *
+ * `eligible` false is an answer, not an error -- the server says why in
+ * `ineligibleReason`, and the screen shows that sentence verbatim. `myVerdict`
+ * is the caller's vote in the CURRENT round only (DD-059), so it survives the
+ * vote settling the issue and resets when a new fix is submitted.
+ */
+export interface VerificationView {
+  issue: PublicIssue;
+  beforePhotoUrl: string | null;
+  /** When the fix was submitted. Null once the issue is no longer pending. */
+  submittedAt: string | null;
+  /** After this, silence counts as agreement. Null once the issue is no longer pending. */
+  silenceDeadline: string | null;
+  round: number;
+  eligible: boolean;
+  ineligibleReason: string | null;
+  myVerdict: Verdict | null;
+  myReason: string | null;
+  confirmations: number;
+  rejections: number;
+  required: number;
+}
+
+export type SettleOutcome =
+  | "STILL_OPEN"
+  | "RESOLVED"
+  | "RESOLVED_WITHOUT_VERIFICATION"
+  | "REOPENED"
+  | "ALREADY_SETTLED";
+
+/** `POST /issues/{id}/verify`. `status` is the issue's status after the vote. */
+export interface VoteResult {
+  verdict: Verdict;
+  status: IssueStatus;
+  outcome: SettleOutcome;
+  confirmations: number;
+  rejections: number;
+  required: number;
+}
+
+/** `GET /me/verifications`: one fix waiting on the caller. */
+export interface AwaitingVerdict {
+  issue: PublicIssue;
+  silenceDeadline: string | null;
+}
+
+export type NotificationType = "VERIFY_REQUESTED" | "RESOLVED" | "REOPENED" | "REJECTED";
+
+export interface AppNotification {
+  id: number;
+  issueId: string | null;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  createdAt: string;
+  readAt: string | null;
+}
+
+export interface NotificationPage {
+  items: AppNotification[];
+  total: number;
+  unread: number;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * `GET /dashboard/departments`. The rates are null, not zero, when their
+ * denominator is zero: a department that has resolved nothing has no rate.
+ */
+export interface DepartmentAccountability {
+  departmentId: string;
+  departmentName: string;
+  resolved: number;
+  resolvedWithoutVerification: number;
+  unverifiedRate: number | null;
+  fixesClaimed: number;
+  reopened: number;
+  reopenRate: number | null;
+}

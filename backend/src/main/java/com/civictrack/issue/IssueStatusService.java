@@ -5,6 +5,7 @@ import com.civictrack.issue.policy.TransitionPolicy;
 import com.civictrack.sla.SlaProperties;
 import com.civictrack.user.Actor;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +41,7 @@ public class IssueStatusService {
     private final TransitionPolicy policy;
     private final IssueStatusHistoryRepository historyRepo;
     private final SlaProperties slaProps;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     /**
@@ -64,6 +66,12 @@ public class IssueStatusService {
 
         historyRepo.save(IssueStatusHistory.of(issue, from, to,
                 actor.role().name(), actor.id(), ctx.note()));
+
+        // Synchronous, inside this transaction: whatever a listener writes --
+        // the notifications to reporters, today -- commits or rolls back with
+        // the transition it describes. A notification about a status change
+        // that was then rolled back would be a false statement to a citizen.
+        events.publishEvent(new IssueTransitioned(issue, from, to, actor, ctx.note(), now));
         return issue;
     }
 
@@ -113,6 +121,9 @@ public class IssueStatusService {
                 issue.setResolutionPhotoUrl(ctx.proofPhotoUrl());
                 issue.setResolutionNote(ctx.note());
                 issue.setResolvedBy(actor.id());
+                // DD-059: a new claim is a new vote. Without this, a resubmitted
+                // fix would be judged on the votes cast against the last one.
+                issue.setVerificationRound(issue.getVerificationRound() + 1);
             }
 
             case RESOLVED -> {

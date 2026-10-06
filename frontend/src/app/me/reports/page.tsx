@@ -11,7 +11,8 @@ import { useAuth } from "@/lib/auth";
 import { ApiError, request } from "@/lib/api";
 import { isOverdue } from "@/lib/status";
 import { ageLabel } from "@/lib/format";
-import type { MyReportsPage } from "@/lib/types";
+import { keys } from "@/lib/queries";
+import type { AwaitingVerdict, MyReportsPage } from "@/lib/types";
 import { useSignIn } from "@/lib/signInDialog";
 
 /**
@@ -37,6 +38,18 @@ export default function MyReportsPageRoute() {
     enabled: Boolean(session),
     staleTime: 30_000,
   });
+
+  // Which of these issues are waiting on this user's answer (blueprint §3.11:
+  // "a row awaiting the user's verification is marked and linked"). The
+  // server's list, not `status === PENDING_VERIFICATION` here: it also knows
+  // whether this user has already answered the current round.
+  const awaiting = useQuery({
+    queryKey: keys.myVerifications(session?.userId),
+    queryFn: () => authed((token) => request<AwaitingVerdict[]>("/me/verifications", { token })),
+    enabled: Boolean(session),
+    staleTime: 30_000,
+  });
+  const awaitingIds = new Set(awaiting.data?.map((a) => a.issue.id));
 
   if (initialising) {
     return (
@@ -104,6 +117,13 @@ export default function MyReportsPageRoute() {
                   resolvedAt={r.issue.resolvedAt}
                   landmark={r.landmark}
                 />
+                {awaitingIds.has(r.issue.id) && (
+                  <p className="text-dense -mt-2 mb-3">
+                    <Link href={`/me/verify/${r.issue.id}`} className="underline text-ink font-semibold">
+                      The department says this is fixed. Is it?
+                    </Link>
+                  </p>
+                )}
                 {r.merged && (
                   // Plain language. The citizen never sees "merged into issue
                   // 432" (blueprint §9) -- they see that other people reported

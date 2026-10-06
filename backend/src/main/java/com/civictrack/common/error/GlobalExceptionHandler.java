@@ -6,6 +6,8 @@ import com.civictrack.issue.policy.IllegalTransitionException;
 import com.civictrack.issue.policy.TransitionGuardException;
 import com.civictrack.user.auth.EmailAlreadyRegisteredException;
 import com.civictrack.user.auth.InvalidCredentialsException;
+import com.civictrack.verification.AlreadyVerifiedException;
+import com.civictrack.verification.VerificationNotOpenException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -110,6 +112,33 @@ public class GlobalExceptionHandler {
         pd.setType(URI.create(BASE + "transition-guard-failed"));
         pd.setTitle("Transition precondition not met");
         pd.setProperty("guard", ex.getGuard());
+        return pd;
+    }
+
+    // ------------------------------------------------------------------
+    // phase 6: verification
+    // ------------------------------------------------------------------
+
+    /**
+     * 409 carrying the recorded verdict, so the client can show the citizen
+     * what they already said (blueprint 3.12) instead of an error.
+     */
+    @ExceptionHandler(AlreadyVerifiedException.class)
+    ProblemDetail onAlreadyVerified(AlreadyVerifiedException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        pd.setType(URI.create(BASE + "already-verified"));
+        pd.setTitle("Already answered");
+        pd.setProperty("verdict", ex.getVerdict().name());
+        return pd;
+    }
+
+    /** 409: the vote has closed, or never opened. Names the current status. */
+    @ExceptionHandler(VerificationNotOpenException.class)
+    ProblemDetail onVerificationNotOpen(VerificationNotOpenException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        pd.setType(URI.create(BASE + "verification-not-open"));
+        pd.setTitle("Not waiting for verification");
+        pd.setProperty("status", ex.getStatus().name());
         return pd;
     }
 

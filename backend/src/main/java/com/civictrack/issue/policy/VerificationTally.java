@@ -25,9 +25,25 @@ public record VerificationTally(int reporters, int confirmations, int rejections
         return Math.min(3, Math.max(1, (int) Math.ceil(reporters / 2.0)));
     }
 
-    /** Citizens confirmed, or nobody objected before the timeout. */
+    /**
+     * Citizens confirmed, or the timeout passed with the fix not rejected.
+     *
+     * <p>Section 4.3 states the timeout rule as {@code rejections == 0}. That
+     * leaves one outcome with no exit: a contested vote that falls short of
+     * the quorum -- six reporters, so three needed, and the vote stands at two
+     * FIXED to one NOT_FIXED. Rejections do not prevail, the quorum is not
+     * met, and silence-as-consent does not apply because somebody objected. The
+     * issue would sit in PENDING_VERIFICATION with its SLA clock paused for
+     * ever, which is the outcome the timeout exists to prevent.
+     *
+     * <p>So at the timeout a majority settles it (DD-060). Ties and worse
+     * already reopened the issue through {@link #rejectionsPrevail()}, which is
+     * evaluated first, so this clause only ever decides a vote the fix was
+     * winning.
+     */
     public boolean quorumMet() {
-        return confirmations >= required() || (timeoutElapsed && rejections == 0);
+        return confirmations >= required()
+                || (timeoutElapsed && (rejections == 0 || confirmations > rejections));
     }
 
     /** Resolved through silence rather than through a vote (DD-006). */

@@ -127,6 +127,9 @@ civictrack:
     # SlaServiceTest asserts that it is zero so it cannot be left switched on.
     demo-override-hours: 0
   verification:
+    # Settles timed-out votes and auto-closes settled issues. Every five
+    # minutes is plenty against a 72-hour window; the demo profile tightens it.
+    cron: "0 */5 * * * *"
     timeout-hours: 72
     auto-close-days: 7
   security:

@@ -29,6 +29,8 @@ civictrack:
     rearm-floor: PT1M
 
   verification:
+    # Same cadence as the SLA sweep, so a timed-out vote settles on stage.
+    cron: "*/20 * * * * *"
     # Long enough that the "citizens rejected the fix" step is a deliberate tap
     # on stage rather than a race against an auto-resolve.
     timeout-hours: 1

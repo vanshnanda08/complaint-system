@@ -4,6 +4,7 @@ import type {
   BboxResult,
   Category,
   DashboardSummary,
+  DepartmentAccountability,
   PublicHistoryEntry,
   PublicIssue,
   PublicIssuePage,
@@ -38,6 +39,15 @@ export const keys = {
   categories: () => ["categories"] as const,
   wards: () => ["wards"] as const,
   summary: () => ["dashboard", "summary"] as const,
+  departments: () => ["dashboard", "departments"] as const,
+  // Everything under ["me"] belongs to the signed-in user. Each key carries
+  // the user id, so signing in as somebody else on the same tab never serves
+  // the previous person's list from cache.
+  myVerifications: (userId: string | undefined) => ["me", "verifications", userId] as const,
+  myVerification: (userId: string | undefined, issueId: string) =>
+    ["me", "verifications", userId, issueId] as const,
+  myNotifications: (userId: string | undefined) => ["me", "notifications", userId] as const,
+  myUnread: (userId: string | undefined) => ["me", "notifications", userId, "unread"] as const,
 };
 
 export interface IssueFilters {
@@ -127,3 +137,12 @@ export function useDashboardSummary() {
     staleTime: LIST_STALE,
   });
 }
+
+export function useDepartmentAccountability() {
+  return useQuery({
+    queryKey: keys.departments(),
+    queryFn: () => request<DepartmentAccountability[]>("/dashboard/departments"),
+    staleTime: LIST_STALE,
+  });
+}
+

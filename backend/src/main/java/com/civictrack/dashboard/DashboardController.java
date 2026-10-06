@@ -21,4 +21,10 @@ public class DashboardController {
     public DashboardSummaryDto summary() {
         return dashboard.summary();
     }
+
+    /** Unverified-resolution and reopen rates per department (DD-006). */
+    @GetMapping("/departments")
+    public java.util.List<DepartmentAccountabilityDto> departments() {
+        return dashboard.departments();
+    }
 }

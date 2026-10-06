@@ -59,6 +59,18 @@ public class DashboardService {
                 now);
     }
 
+    /**
+     * The per-department verification record. Not wrapped in {@link #tile}:
+     * it is its own request, so a failure here is this endpoint's error and
+     * cannot take the summary tiles down with it.
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<DepartmentAccountabilityDto> departments() {
+        return issues.findDepartmentAccountability().stream()
+                .map(DepartmentAccountabilityDto::from)
+                .toList();
+    }
+
     private <T> T tile(String name, Supplier<T> query) {
         return tile(name, query, null);
     }

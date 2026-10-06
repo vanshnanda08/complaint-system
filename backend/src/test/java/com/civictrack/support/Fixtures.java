@@ -118,6 +118,33 @@ public class Fixtures {
         return issues.save(issue);
     }
 
+    /**
+     * A member report on an existing issue, by a known account or -- with a
+     * null reporter -- by an anonymous device. Refreshes the issue's distinct
+     * reporter count the way ingest does, because the verification quorum is
+     * computed from it.
+     *
+     * <p>Written directly rather than through ingest, because these tests are
+     * about who reported, not about where the report lands; the clustering
+     * engine's choices would only add a second thing that could go wrong.
+     */
+    @Transactional
+    public void report(UUID issueId, UUID reporterId) {
+        jdbc.update("""
+                INSERT INTO reports (issue_id, reporter_id, device_id, category_code, location,
+                                     gps_accuracy_m, photo_url, cluster_decision)
+                SELECT i.id, ?, ?, i.category_code, i.centroid, 8,
+                       'https://example.test/before-' || gen_random_uuid() || '.jpg', 'MERGED'
+                FROM issues i WHERE i.id = ?
+                """, reporterId, reporterId == null ? "device-" + UUID.randomUUID() : null, issueId);
+        jdbc.update("""
+                UPDATE issues SET distinct_reporter_count =
+                    (SELECT COUNT(DISTINCT COALESCE(reporter_id::text, device_id))
+                     FROM reports WHERE issue_id = ?)
+                WHERE id = ?
+                """, issueId, issueId);
+    }
+
     /** An issue whose deadline is already in the past. */
     @Transactional
     public Issue breachedIssue(String categoryCode, Instant now) {

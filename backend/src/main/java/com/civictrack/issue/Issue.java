@@ -166,6 +166,14 @@ public class Issue {
     @Column(name = "reopen_count", nullable = false)
     private int reopenCount;
 
+    /**
+     * DD-059. Incremented on every entry into PENDING_VERIFICATION, so each
+     * claimed fix is voted on by itself. Votes record the round they were cast
+     * in and the tally counts only the current one.
+     */
+    @Column(name = "verification_round", nullable = false)
+    private int verificationRound;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;

@@ -1,6 +1,7 @@
 package com.civictrack.verification;
 
 import com.civictrack.issue.Issue;
+import com.civictrack.issue.IssueStatus;
 import com.civictrack.issue.policy.VerificationTally;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,13 +28,26 @@ public class VerificationQuorumService {
 
     @Transactional(readOnly = true)
     public VerificationTally tally(Issue issue, Instant now) {
-        boolean timedOut = issue.getClockPausedAt() != null
-                && Duration.between(issue.getClockPausedAt(), now).toHours() >= props.timeoutHours();
+        Instant deadline = silenceDeadline(issue);
+        boolean timedOut = deadline != null && !now.isBefore(deadline);
 
         return new VerificationTally(
                 issue.getDistinctReporterCount(),
-                verifications.countConfirmations(issue.getId()),
-                verifications.countRejections(issue.getId()),
+                verifications.countConfirmations(issue.getId(), issue.getVerificationRound()),
+                verifications.countRejections(issue.getId(), issue.getVerificationRound()),
                 timedOut);
+    }
+
+    /**
+     * The moment after which silence counts as consent, or null when the issue
+     * is not waiting on citizens. The verify screen states it, and the tally
+     * above is judged against it, so the two cannot disagree about when that
+     * is.
+     */
+    public Instant silenceDeadline(Issue issue) {
+        if (issue.getStatus() != IssueStatus.PENDING_VERIFICATION || issue.getClockPausedAt() == null) {
+            return null;
+        }
+        return issue.getClockPausedAt().plus(Duration.ofHours(props.timeoutHours()));
     }
 }

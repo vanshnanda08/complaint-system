@@ -25,6 +25,11 @@ civictrack:
     jwt:
       secret: test-only-signing-secret-at-least-32-bytes-long
 
+  # Same reason as the SLA sweep: tests settle verification by calling
+  # VerificationSweepService directly.
+  verification:
+    cron: "-"
+
   # Disabled for the same reason the SLA sweep is: a background job calling a
   # third-party API mid-test is a flake with a confusing signature. The sweep's
   # own logic is tested directly instead -- see CloudinaryOrphanSweepIT.
