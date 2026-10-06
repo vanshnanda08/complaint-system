@@ -18,6 +18,7 @@ import {
   useDepartmentAccountability,
   type StreamState,
 } from "@/lib/queries";
+import { useState } from "react";
 import { absoluteDateTime, humaniseMs, reporters } from "@/lib/format";
 import type { ApiError } from "@/lib/api";
 import type { DashboardMetrics, DepartmentAccountability, Median } from "@/lib/types";
@@ -145,9 +146,16 @@ function LiveBadge({ state }: { state: StreamState }) {
   );
 }
 
-/** The live list of breaching issues, most overdue first. */
+/**
+ * The live list of breaching issues, most overdue first. The first eight are
+ * shown: on a bad day all twenty push every chart off the first screens, and
+ * the rest are one tap away rather than gone.
+ */
+const BREACHING_SHOWN = 8;
+
 function Breaching() {
   const breaching = useBreaching();
+  const [all, setAll] = useState(false);
 
   return (
     <section className="mt-8">
@@ -165,7 +173,7 @@ function Breaching() {
       )}
       {breaching.data && breaching.data.length > 0 && (
         <ol className="mt-3 list-none p-0 border-t border-rule">
-          {breaching.data.map((b) => (
+          {(all ? breaching.data : breaching.data.slice(0, BREACHING_SHOWN)).map((b) => (
             <li key={b.id} className="border-b border-rule py-3 flex flex-wrap items-center gap-x-5 gap-y-1">
               <TicketRef publicRef={b.publicRef} issueId={b.id} />
               <StatusRule status={b.status} overdue />
@@ -187,6 +195,16 @@ function Breaching() {
             </li>
           ))}
         </ol>
+      )}
+      {breaching.data && breaching.data.length > BREACHING_SHOWN && (
+        <button
+          type="button"
+          className="mt-2 text-dense underline bg-transparent border-0 p-0 cursor-pointer text-ink"
+          aria-expanded={all}
+          onClick={() => setAll((a) => !a)}
+        >
+          {all ? "Show the most overdue only" : `Show all ${breaching.data.length} breaching issues`}
+        </button>
       )}
     </section>
   );
@@ -267,7 +285,12 @@ function Aggregates({ m }: { m: DashboardMetrics }) {
                 title="Open issues by time since first report"
                 valueLabel="Open issues"
                 labelCaps
-                columns={m.backlogAge.map((b) => ({ key: b.label, label: b.label, values: [b.open] }))}
+                columns={m.backlogAge.map((b) => ({
+                  key: b.label,
+                  label: b.label,
+                  axisLabel: b.toDays === null ? `${b.fromDays}d+` : b.toDays <= 7 ? `${b.fromDays}–${b.toDays}d` : `${b.fromDays / 7}–${b.toDays === 30 ? "4" : b.toDays / 7}w`,
+                  values: [b.open],
+                }))}
               />
             ) : (
               <p className="text-dense text-ink-muted">{FAILED}</p>

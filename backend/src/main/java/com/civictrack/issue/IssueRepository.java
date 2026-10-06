@@ -614,6 +614,7 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
               AND (CAST(:wardId AS uuid) IS NULL OR i.ward_id = CAST(:wardId AS uuid))
               AND (CAST(:assignedTo AS uuid) IS NULL OR i.assigned_to = CAST(:assignedTo AS uuid))
               AND (:unassignedOnly = FALSE OR i.assigned_to IS NULL)
+              AND (:toAssignOnly = FALSE OR i.status IN ('NEW','ACKNOWLEDGED'))
             ORDER BY i.priority_score DESC, i.due_at ASC
             LIMIT :limit OFFSET :offset
             """, nativeQuery = true)
@@ -621,6 +622,7 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
                                  @Param("wardId") UUID wardId,
                                  @Param("assignedTo") UUID assignedTo,
                                  @Param("unassignedOnly") boolean unassignedOnly,
+                                 @Param("toAssignOnly") boolean toAssignOnly,
                                  @Param("limit") int limit,
                                  @Param("offset") int offset);
 

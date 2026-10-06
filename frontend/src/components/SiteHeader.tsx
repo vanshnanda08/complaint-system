@@ -43,10 +43,11 @@ const MENU_LINKS: NavLink[] = [
   // "Work queue", not "Team". The link goes to a queue of work items; the
   // blueprint's vocabulary rule (§9) is that the label names the thing.
   { href: "/staff/queue", label: "Work queue", icon: "inbox", staffOnly: true },
+  { href: "/supervisor/queue", label: "Assignment board", icon: "users", supervisorOnly: true },
   { href: "/supervisor/review", label: "Review queue", icon: "layers", supervisorOnly: true },
 ];
 
-type IconName = "grid" | "list" | "pin" | "flag" | "inbox" | "layers" | "bell" | "signOut" | "signIn";
+type IconName = "grid" | "list" | "pin" | "flag" | "inbox" | "users" | "layers" | "bell" | "signOut" | "signIn";
 
 /** Decorative throughout: every icon here sits beside its own text label. */
 function Icon({ name }: { name: IconName }) {
@@ -102,6 +103,14 @@ function Icon({ name }: { name: IconName }) {
         <svg {...common}>
           <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
           <path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" />
+        </svg>
+      );
+    case "users":
+      return (
+        <svg {...common}>
+          <circle cx="9" cy="8" r="3.5" />
+          <path d="M2.5 20a6.5 6.5 0 0113 0" />
+          <path d="M16 4.5a3.5 3.5 0 010 7M18 20a6.5 6.5 0 00-2.5-5.1" />
         </svg>
       );
     case "layers":

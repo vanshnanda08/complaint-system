@@ -13,17 +13,18 @@ dashboard publishes the resulting numbers without a login.
 
 ## Project status
 
-**Month-one milestone: complete.** All week 1–4 deliverables are built, tested
-and deployed. Weeks 5–8 (verification, moderation, evaluation, write-up) are
-next.
+**Phases 0–7 complete.** Month one (weeks 1–4) plus citizen verification
+(week 5) and supervisor moderation with the full live dashboard (week 6) are
+built and tested. Evaluation (week 7) and anti-abuse and the write-up (week 8)
+are next.
 
 | | |
 |---|---|
 | Frontend | https://civic-track-six.vercel.app |
 | API | https://civictrack-api.onrender.com |
 | API docs (Swagger) | https://civictrack-api.onrender.com/swagger-ui/index.html |
-| Backend tests | **173** passing, against real PostGIS via Testcontainers |
-| Frontend tests | **63** passing, plus lint, typecheck and production build in CI |
+| Backend tests | **219** passing, against real PostGIS via Testcontainers |
+| Frontend tests | **68** passing, plus lint, typecheck and production build in CI |
 | CI | Green on `main` (GitHub Actions) |
 | Deployed corpus | 110 issues from 250 reports, across eight of the nine statuses |
 
@@ -40,20 +41,15 @@ next.
 | 3 | State machine and `TransitionPolicy`, status history, staff queue, SLA clock, escalation ladder, ShedLock sweep, priority ageing, JWT auth and RBAC | ✅ done |
 | 4 | Public read API; Next.js frontend: report composer, map, issue detail, **cluster inspector**, staff queue and work view, public dashboard, auth with httpOnly refresh cookie | ✅ done |
 | 5 | Deployment: Docker image with CDS, Supabase, Render, Vercel, GitHub Actions CI, keep-alive, backup with a tested restore, Swagger UI, Cloudinary photo upload and nightly orphan sweep | ✅ done |
+| 6 | Citizen verification: quorum, one vote per citizen per fix, timeout sweep, auto-close, reopen on rejection, `/me/verify`, notification centre, resolved-without-verification rate per department | ✅ done |
+| 7 | Supervisor tools (assignment board, review queue, split/merge with full recomputation and a permanent log, recategorise), full dashboard aggregates, SSE live updates | ✅ done |
 
-### Next (month 2)
+### Next
 
 | Phase | Deliverable |
 |---|---|
-| 6 | Citizen verification: quorum, timeout sweep, auto-close, reopen on rejection, notifications, `/me/verify` |
-| 7 | Supervisor tools (assignment board, review queue, split/merge), full dashboard aggregates, SSE live updates |
 | 8 | Evaluation: clustering precision/recall/F1 against the ground-truth labels, merge-radius sweep, latency vs. scale, extent-cap ablation |
-| 9 | Rate limiting, anti-abuse, polish |
-
-**Known limitation:** an acknowledged issue cannot yet progress through the UI,
-because the next step (assignment) is a supervisor action arriving in phase 7.
-The work view says so rather than offering a button the server would refuse.
-The full lifecycle already works through the API and is covered by tests.
+| 9 | Rate limiting, anti-abuse, demo scenario, paper; then the remaining blueprint screens (system screens, reassign ward, audit log, profile, ward detail, department analytics) |
 
 ## Features
 
@@ -76,6 +72,19 @@ The full lifecycle already works through the API and is covered by tests.
   sweeps.
 - **Anonymous reporting.** No account needed to report; a signed-in reporter's
   identity is taken from the verified token, never from the request body.
+- **Citizen verification.** A claimed fix is put to the people who reported it:
+  enough "fixed" votes resolve it, a rejection reopens and escalates it, and
+  silence resolves it after 72 hours. Issues no citizen could verify are
+  counted and published per department rather than hidden.
+- **Supervisor moderation.** A review queue of every grouping the engine was
+  unsure of; split and merge with a server-computed preview, full
+  recomputation, and a permanent log. No report is ever deleted, and a merged
+  ticket still resolves and says where its reports went. An assignment board
+  hands acknowledged work to crew.
+- **Live public dashboard.** Median resolution time, SLA compliance, backlog
+  age, reported against resolved, reopen and unverified rates per department,
+  and a breaching list that updates itself over server-sent events. Chart
+  colours checked for colour-blind separation, every chart with a table view.
 - **Accessible status display.** Every status is encoded by colour, shape and
   word, never colour alone. Light and dark themes.
 
@@ -176,8 +185,8 @@ account at all.
 ## Testing
 
 ```bash
-cd backend  && mvn clean test    # 173 integration and unit tests, Testcontainers
-cd frontend && npm run test      # 63 unit tests
+cd backend  && mvn clean test    # 219 integration and unit tests, Testcontainers
+cd frontend && npm run test      # 68 unit tests
 cd frontend && npm run lint      # includes the Leaflet import boundary rule
 ```
 

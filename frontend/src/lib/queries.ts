@@ -190,9 +190,11 @@ export type StreamState = "connecting" | "live" | "reconnecting" | "unsupported"
  */
 export function useDashboardStream(): StreamState {
   const qc = useQueryClient();
-  const [state, setState] = useState<StreamState>(() =>
-    typeof EventSource === "undefined" ? "unsupported" : "connecting",
-  );
+  // "connecting" on the server and the client alike. Choosing the first state
+  // from `typeof EventSource` made the two renders disagree -- the server has
+  // no EventSource -- and React discarded the server's HTML for the whole
+  // page. The browser walk caught it as a hydration error.
+  const [state, setState] = useState<StreamState>("connecting");
 
   useEffect(() => {
     if (typeof EventSource === "undefined") return;

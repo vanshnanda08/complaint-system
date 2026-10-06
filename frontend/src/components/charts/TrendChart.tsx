@@ -32,7 +32,9 @@ export interface TrendChartProps<K extends string> {
   height?: number;
 }
 
-const PAD = { top: 12, right: 72, bottom: 28, left: 36 };
+// Right padding holds the end labels ("12 new issues"). At 72px the longest
+// was clipped mid-word, which the browser walk's screenshot showed.
+const PAD = { top: 12, right: 108, bottom: 28, left: 36 };
 
 export function TrendChart<K extends string>({ title, series, rows, height = 220 }: TrendChartProps<K>) {
   const [ref, width] = useWidth<HTMLDivElement>();

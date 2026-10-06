@@ -24,6 +24,12 @@ import { fmt, niceTicks, useWidth } from "./chartKit";
 export interface Column {
   key: string;
   label: string;
+  /**
+   * The x-axis text when the full label will not fit its slot -- "2–4w" for
+   * "2–4 weeks". The full label stays in the tooltip, the accessible name and
+   * the table, so nothing is only abbreviated.
+   */
+  axisLabel?: string;
   /** One number per part, bottom first. A single-series chart has one. */
   values: number[];
   /** Tooltip and table text; defaults to the total. */
@@ -158,7 +164,7 @@ export function ColumnChart({
                   )}
                   {(columns.length - 1 - i) % labelEvery === 0 && (
                     <text x={cx} y={height - 8} textAnchor="middle" className="text-meta" fill="var(--ink-muted)">
-                      {c.label}
+                      {c.axisLabel ?? c.label}
                     </text>
                   )}
                 </g>

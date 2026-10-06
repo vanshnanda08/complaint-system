@@ -312,6 +312,15 @@ export default function StaffWorkViewPage({ params }: { params: Promise<{ id: st
             <p className="mt-2 text-body" style={{ maxWidth: "var(--measure-prose)" }}>
               {waitingOn(i.status, actorContext)}
             </p>
+            {/* The person this issue is waiting on, looking at it: send them to
+                the one screen where assigning happens. */}
+            {i.status === "ACKNOWLEDGED" && (session?.role === "SUPERVISOR" || session?.role === "ADMIN") && (
+              <p className="mt-3">
+                <Link href="/supervisor/queue" className="text-body underline text-ink">
+                  Assign it on the assignment board
+                </Link>
+              </p>
+            )}
           </>
         )}
       </section>

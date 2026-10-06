@@ -110,8 +110,9 @@ public class IssueLifecycleService {
         UUID wardId = actor.isAdmin() ? null : actor.wardId();
         UUID assignedTo = tab == QueueTab.MINE ? actor.id() : null;
         boolean unassignedOnly = tab == QueueTab.UNASSIGNED;
+        boolean toAssignOnly = tab == QueueTab.TO_ASSIGN;
         return issues.findQueueRows(departmentId, wardId, assignedTo, unassignedOnly,
-                                    limit, offset);
+                                    toAssignOnly, limit, offset);
     }
 
     @Transactional(readOnly = true)

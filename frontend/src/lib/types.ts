@@ -463,3 +463,19 @@ export interface ModerationEntry {
   createdAt: string;
   detail: Record<string, unknown>;
 }
+
+/** `GET /supervisor/queue`: a queue row plus identities, for supervisors only (blueprint 3.16). */
+export interface BoardRow {
+  row: QueueRow;
+  reporters: { id: string; fullName: string }[];
+  anonymousReporters: number;
+  assigneeName: string | null;
+}
+
+export interface Member {
+  id: string;
+  fullName: string;
+  role: "STAFF" | "SUPERVISOR";
+  wardName: string | null;
+  openAssigned: number;
+}

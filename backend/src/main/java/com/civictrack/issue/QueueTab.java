@@ -18,7 +18,17 @@ public enum QueueTab {
 
     ALL,
     MINE,
-    UNASSIGNED;
+    UNASSIGNED,
+
+    /**
+     * The assignment board's default (blueprint 3.16): NEW and ACKNOWLEDGED
+     * work, which no crew member has been assigned through the transition
+     * table. Not the same as {@link #UNASSIGNED}: escalation hands an issue's
+     * {@code assigned_to} up the ladder to a department head, ward officer or
+     * the commissioner, so an escalated NEW issue has a holder and still needs
+     * a crew. Filtering on a null assignee hid exactly that work.
+     */
+    TO_ASSIGN;
 
     public static QueueTab parse(String raw) {
         if (raw == null || raw.isBlank()) {

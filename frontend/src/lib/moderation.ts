@@ -34,6 +34,13 @@ export function reviewCause(reason: string | null) {
  */
 export function invalidateAfterModeration(qc: QueryClient) {
   for (const key of [["supervisor"], ["issue"], ["issues"], ["bbox"], ["dashboard"], ["staff"]]) {
-    void qc.invalidateQueries({ queryKey: key });
+    void qc.invalidateQueries({
+      queryKey: key,
+      // Not the previews. A preview describes a selection that the action
+      // just consumed -- refetching a merge preview for an issue that is now
+      // merged away is a 409, and a split preview for reports that have moved
+      // is another. The browser walk caught both as console errors.
+      predicate: (q) => !String(q.queryKey[1] ?? "").endsWith("-preview"),
+    });
   }
 }
