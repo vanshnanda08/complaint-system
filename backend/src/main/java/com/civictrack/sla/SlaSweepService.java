@@ -5,6 +5,8 @@ import com.civictrack.sla.escalation.EscalationOutcome;
 import com.civictrack.sla.escalation.EscalationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.civictrack.stream.DashboardChanged;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
@@ -43,6 +45,7 @@ public class SlaSweepService {
     private final EscalationService escalationService;
     private final PriorityRecomputer priorityRecomputer;
     private final SlaProperties props;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     public SweepResult sweep() {
@@ -82,6 +85,11 @@ public class SlaSweepService {
                 rescored);
         log.info("SLA sweep complete: {} escalated, {} no longer breached, {} raced, {} rescored",
                 result.escalated(), result.notBreached(), result.raced(), result.rescored());
+        // Every run, not only runs that escalated: the breaching list changes
+        // because time passed, whether or not this sweep acted on it. Published
+        // outside any transaction -- each escalation above has already
+        // committed on its own -- so the stream delivers it straight away.
+        events.publishEvent(new DashboardChanged("sla-sweep"));
         return result;
     }
 

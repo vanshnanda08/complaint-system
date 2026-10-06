@@ -15,6 +15,7 @@ import { useIssue, useIssueHistory, useIssueReports } from "@/lib/queries";
 import { STATUS, isOverdue } from "@/lib/status";
 import { absoluteDateTime, ageLabel, coordinates, metres, reporters } from "@/lib/format";
 import { isUnknownTicket, type ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 /**
  * Issue detail (blueprint §3.6): everything publicly known about one work item.
@@ -29,6 +30,8 @@ export default function IssueDetailPage({ params }: { params: Promise<{ id: stri
   const issue = useIssue(id);
   const reports = useIssueReports(id);
   const history = useIssueHistory(id);
+  const { session } = useAuth();
+  const canModerate = session?.role === "SUPERVISOR" || session?.role === "ADMIN";
 
   if (issue.isPending) {
     return (
@@ -83,6 +86,18 @@ export default function IssueDetailPage({ params }: { params: Promise<{ id: stri
           />
         </span>
       </div>
+
+      {i.mergedIntoId && (
+        // DD-063: the ticket a citizen holds still resolves, and says where
+        // their report went, rather than reading as "rejected" and stopping.
+        <p role="status" className="mt-4 text-body border-l-4 border-ink pl-3" style={{ maxWidth: "var(--measure-prose)" }}>
+          Someone had already reported this problem, so this ticket was joined with{" "}
+          <Link href={`/issues/${i.mergedIntoId}`} className="underline text-ink">
+            {i.mergedIntoRef}
+          </Link>
+          . The reports on it now count there, and that is the ticket to follow.
+        </p>
+      )}
 
       <h1 className="mt-3 text-display">{i.categoryName}</h1>
       <p className="mt-1 text-body text-ink-muted">
@@ -214,6 +229,14 @@ export default function IssueDetailPage({ params }: { params: Promise<{ id: stri
           <Link href={`/issues/${i.id}/cluster`} className="text-body underline text-ink">
             See how these reports were grouped
           </Link>
+          {canModerate && !i.mergedIntoId && (
+            <>
+              {" · "}
+              <Link href={`/supervisor/issues/${i.id}/cluster`} className="text-body underline text-ink">
+                Split or merge
+              </Link>
+            </>
+          )}
         </p>
       </section>
     </PageShell>

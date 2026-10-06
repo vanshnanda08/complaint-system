@@ -361,11 +361,14 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
                    i.reopen_count                  AS reopenCount,
                    i.resolution_note               AS resolutionNote,
                    i.resolution_photo_url          AS resolutionPhotoUrl,
-                   i.resolved_without_verification AS resolvedWithoutVerification
+                   i.resolved_without_verification AS resolvedWithoutVerification,
+                   i.merged_into_id                AS mergedIntoId,
+                   m.public_ref                    AS mergedIntoRef
             FROM issues i
             JOIN categories c  ON c.code = i.category_code
             JOIN wards w       ON w.id   = i.ward_id
             LEFT JOIN departments d ON d.id = i.department_id
+            LEFT JOIN issues m ON m.id = i.merged_into_id
             """;
 
     /**
@@ -623,6 +626,85 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
 
     Optional<Issue> findByPublicRef(String publicRef);
 
+    // ------------------------------------------------------------------
+    // phase 7: the supervisor review queue
+    // ------------------------------------------------------------------
+
+    /**
+     * Every issue the clustering engine flagged for a person to look at, from
+     * all three causes, in the caller's scope (blueprint 3.17).
+     *
+     * <p>Scoped exactly as {@link #findQueueRows} is -- department, or ward for
+     * a ward officer, or neither for an administrator -- so a supervisor cannot
+     * page into another department's review work any more than into its queue.
+     * Oldest first: a flag is a question the system asked a person, and the
+     * one that has waited longest is the one most likely to have been
+     * forgotten.
+     */
+    @Query(value = """
+            SELECT i.id                         AS id,
+                   i.public_ref                 AS publicRef,
+                   i.category_code              AS categoryCode,
+                   c.display_name               AS categoryName,
+                   i.ward_id                    AS wardId,
+                   w.name                       AS wardName,
+                   i.status                     AS status,
+                   i.priority                   AS priority,
+                   i.review_reason              AS reviewReason,
+                   ST_Y(i.centroid)             AS lat,
+                   ST_X(i.centroid)             AS lng,
+                   i.report_count               AS reportCount,
+                   i.distinct_reporter_count    AS distinctReporterCount,
+                   i.max_member_dist_m          AS extentM,
+                   c.max_extent_multiplier * c.merge_radius_m AS extentCapM,
+                   c.merge_radius_m             AS mergeRadiusM,
+                   i.first_reported_at          AS firstReportedAt,
+                   i.due_at + make_interval(secs => i.paused_seconds) AS effectiveDeadline
+            FROM issues i
+            JOIN categories c ON c.code = i.category_code
+            JOIN wards w      ON w.id   = i.ward_id
+            WHERE i.needs_review
+              AND i.status NOT IN ('CLOSED','REJECTED')
+              AND (CAST(:departmentId AS uuid) IS NULL OR i.department_id = CAST(:departmentId AS uuid))
+              AND (CAST(:wardId AS uuid) IS NULL OR i.ward_id = CAST(:wardId AS uuid))
+            ORDER BY i.created_at ASC, i.id ASC
+            LIMIT :limit OFFSET :offset
+            """, nativeQuery = true)
+    List<ReviewRow> findReviewRows(@Param("departmentId") UUID departmentId,
+                                   @Param("wardId") UUID wardId,
+                                   @Param("limit") int limit,
+                                   @Param("offset") int offset);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM issues i
+            WHERE i.needs_review
+              AND i.status NOT IN ('CLOSED','REJECTED')
+              AND (CAST(:departmentId AS uuid) IS NULL OR i.department_id = CAST(:departmentId AS uuid))
+              AND (CAST(:wardId AS uuid) IS NULL OR i.ward_id = CAST(:wardId AS uuid))
+            """, nativeQuery = true)
+    long countReviewRows(@Param("departmentId") UUID departmentId, @Param("wardId") UUID wardId);
+
+    interface ReviewRow {
+        UUID getId();
+        String getPublicRef();
+        String getCategoryCode();
+        String getCategoryName();
+        UUID getWardId();
+        String getWardName();
+        String getStatus();
+        String getPriority();
+        String getReviewReason();
+        double getLat();
+        double getLng();
+        int getReportCount();
+        int getDistinctReporterCount();
+        double getExtentM();
+        BigDecimal getExtentCapM();
+        int getMergeRadiusM();
+        Instant getFirstReportedAt();
+        Instant getEffectiveDeadline();
+    }
+
     /** One issue as an anonymous caller may see it. See {@link #PUBLIC_SELECT}. */
     interface PublicIssueRow {
         UUID getId();
@@ -657,6 +739,8 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
         String getResolutionNote();
         String getResolutionPhotoUrl();
         boolean getResolvedWithoutVerification();
+        UUID getMergedIntoId();
+        String getMergedIntoRef();
     }
 
     /** One row of the staff queue. Carries assignedTo; never leaves the staff API. */

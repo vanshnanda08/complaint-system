@@ -63,7 +63,10 @@ function markerIcon(m: MapMarker): L.DivIcon {
            <path d="M11 0v6M11 16v6M0 11h6M16 11h6" stroke="${m.color}" stroke-width="2"/>
          </svg>`
       : m.kind === "report"
-        ? `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        ? // Selected (the split tool) is a dark ring around the dot: a shape
+          // cue, so the dot's own colour can stay its status.
+          `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+             ${m.selected ? `<circle cx="${c}" cy="${c}" r="${c - 1}" fill="none" stroke="#14181A" stroke-width="2"/>` : ""}
              <circle cx="${c}" cy="${c}" r="5" fill="${m.color}" stroke="#fff" stroke-width="2"/>
            </svg>`
         : // An issue on the browse map. Heavier stroke when overdue, so the
@@ -116,6 +119,7 @@ export default function MapCanvasInner({
   onViewportChange,
   onPinPlace,
   fitToMarkers = false,
+  onBoxSelect,
 }: MapCanvasProps) {
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -128,11 +132,13 @@ export default function MapCanvasInner({
   // memoising compiler the write may not happen when you think it does.
   const viewportCb = useRef(onViewportChange);
   const pinCb = useRef(onPinPlace);
+  const boxCb = useRef(onBoxSelect);
 
   useEffect(() => {
     viewportCb.current = onViewportChange;
     pinCb.current = onPinPlace;
-  }, [onViewportChange, onPinPlace]);
+    boxCb.current = onBoxSelect;
+  }, [onViewportChange, onPinPlace, onBoxSelect]);
 
   useEffect(() => {
     if (!nodeRef.current || mapRef.current) return;
@@ -178,6 +184,36 @@ export default function MapCanvasInner({
     if (pinCb.current) {
       map.on("click", (e: L.LeafletMouseEvent) => {
         pinCb.current?.(e.latlng.lat, e.latlng.lng);
+      });
+    }
+
+    if (boxCb.current) {
+      // Shift-drag draws a selection box. Dragging is suspended for the
+      // gesture, or the map would pan underneath the box being drawn.
+      map.boxZoom.disable();
+      let start: L.LatLng | null = null;
+      let box: L.Rectangle | null = null;
+      map.on("mousedown", (e: L.LeafletMouseEvent) => {
+        if (!e.originalEvent.shiftKey) return;
+        start = e.latlng;
+        map.dragging.disable();
+      });
+      map.on("mousemove", (e: L.LeafletMouseEvent) => {
+        if (!start) return;
+        const bounds = L.latLngBounds(start, e.latlng);
+        if (box) box.setBounds(bounds);
+        else box = L.rectangle(bounds, { color: "currentColor", weight: 1, fillOpacity: 0.06 }).addTo(map);
+      });
+      map.on("mouseup", () => {
+        if (!start) return;
+        if (box) {
+          const b = box.getBounds();
+          boxCb.current?.({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() });
+          box.remove();
+          box = null;
+        }
+        start = null;
+        if (interactive) map.dragging.enable();
       });
     }
 

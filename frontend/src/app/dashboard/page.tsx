@@ -1,46 +1,63 @@
 "use client";
 
+import Link from "next/link";
 import { PageShell } from "@/components/PageShell";
 import { MetricTile } from "@/components/MetricTile";
 import { ErrorState } from "@/components/ErrorState";
 import { SkeletonTileGrid } from "@/components/Skeleton";
-import { useDashboardSummary, useDepartmentAccountability } from "@/lib/queries";
-import { absoluteDateTime } from "@/lib/format";
+import { StatusRule } from "@/components/StatusRule";
+import { TicketRef } from "@/components/TicketRef";
+import { TrendChart } from "@/components/charts/TrendChart";
+import { ColumnChart } from "@/components/charts/ColumnChart";
+import { shortDay } from "@/components/charts/chartKit";
+import {
+  useBreaching,
+  useDashboardMetrics,
+  useDashboardStream,
+  useDashboardSummary,
+  useDepartmentAccountability,
+  type StreamState,
+} from "@/lib/queries";
+import { absoluteDateTime, humaniseMs, reporters } from "@/lib/format";
 import type { ApiError } from "@/lib/api";
-import type { DepartmentAccountability } from "@/lib/types";
+import type { DashboardMetrics, DepartmentAccountability, Median } from "@/lib/types";
 
 /**
- * Accountability dashboard (blueprint §3.8).
+ * Accountability dashboard (blueprint §3.8), complete as of phase 7.
  *
- * SCOPE FOR THIS PHASE. /dashboard/summary feeds the top row, and since phase 6
- * /dashboard/departments feeds the reopen and unverified-resolution figures
- * ([CHANGE 6], DD-006) -- in their own section with their own request, so
- * either can fail without blanking the other. Every other tile §3.8 specifies renders its
- * blueprint-specified empty state -- "what it will show and how many resolved
- * issues it needs" -- rather than a zero or a dash.
+ * Three requests, each failing on its own: the summary row, the aggregates
+ * (/dashboard/metrics, every section of which is itself nullable), and the
+ * per-department verification record. A failing median cannot blank the
+ * overdue count.
  *
- * That is not a stub standing in for the real thing. It is §3.8's own empty
- * state, and it is more honest than four working tiles beside eight blanks: a
- * zero is a claim about the world, and "we are not measuring this yet" is a
- * different claim. The aggregate queries and the SSE live updates are phase 7.
+ * LIVE. The overdue tile and the breaching list subscribe to the event stream
+ * and refetch when the server says they changed; everything else refetches
+ * every 60 seconds (§3.8). The page says "live" only while the stream is
+ * connected -- a dashboard that claims liveness through a dropped connection
+ * is showing a stale number with a fresh label.
  *
- * Tiles fail independently. `overdueCount` is nullable precisely so one failing
- * aggregate cannot blank the page -- so a null renders the sentence saying so,
- * never a dash. A dash in a number's place is read as a number.
+ * EMPTY. Below the minimum sample a figure is withheld and its tile says how
+ * many more resolved issues it needs (§3.8: "Not zeros, not dashes"). A median
+ * of three issues is an anecdote with a decimal point.
  *
- * The page intro and the "Not measured yet" section heading were removed at the
- * user's request: one dashboard, one grid, no prose. The unbuilt tiles keep
- * their dashed border and their "will show ..." sentence, which is now the only
- * thing distinguishing them -- so that styling is load-bearing rather than
- * decorative, and flattening it back to look like the live tiles would quietly
- * turn "not measured" into "measured, and the answer is nothing".
+ * COLOUR. The charts use two status colours and two neutrals, and nothing
+ * else: resolved is --st-resolved because it IS that status; new issues and
+ * late fixes are the validated context gray; single-series columns are the
+ * neutral mark. The pairs were checked with the dataviz validator, which is
+ * also why "late" is not red: red against green measured ΔE 1.9 under
+ * deuteranopia in dark mode -- one colour to roughly one man in twelve.
  */
 export default function DashboardPage() {
   const summary = useDashboardSummary();
+  const metrics = useDashboardMetrics();
+  const stream = useDashboardStream();
 
   return (
     <PageShell wide>
-      <h1 className="text-display">Accountability dashboard</h1>
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <h1 className="text-display">Accountability dashboard</h1>
+        <LiveBadge state={stream} />
+      </div>
 
       {summary.isPending && <SkeletonTileGrid label="Loading the dashboard" />}
 
@@ -53,92 +70,306 @@ export default function DashboardPage() {
       )}
 
       {summary.data && (
-        <>
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 u-stagger">
-            <MetricTile
-              label="Currently overdue"
-              emphasis
-              {...(summary.data.overdueCount === null
-                ? {
-                    pending:
-                      "This figure could not be computed just now. It will return on the next refresh.",
-                  }
-                : {
-                    value: summary.data.overdueCount.toLocaleString("en-IN"),
-                    trend: "Breached and still on the clock",
-                  })}
-            />
-
-            <MetricTile
-              label="Total resolved to date"
-              value={summary.data.totalResolved.toLocaleString("en-IN")}
-            />
-
-            <MetricTile
-              label="Ward holding the most overdue work"
-              {...(summary.data.topOverdueWard
-                ? {
-                    value: String(summary.data.topOverdueWard.count),
-                    unit: `in ${summary.data.topOverdueWard.name}`,
-                  }
-                : { pending: "Nothing is overdue in any ward." })}
-            />
-
-            <MetricTile
-              label="Department holding the most overdue work"
-              {...(summary.data.topOverdueDepartment
-                ? {
-                    value: String(summary.data.topOverdueDepartment.count),
-                    unit: `in ${summary.data.topOverdueDepartment.name}`,
-                  }
-                : { pending: "No department is holding overdue work." })}
-            />
-          </div>
-
-          {/*
-              The unbuilt metrics carry no heading and no explanation any more.
-              They are still here, and they are still visibly different -- a
-              dashed border, no fill, and a sentence saying what each will show.
-              That is now the whole signal, and it has to carry the meaning the
-              removed paragraph used to spell out: these are specified and not
-              yet built, listed rather than hidden, so what the dashboard does
-              not tell you stays as visible as what it does. The reasoning is
-              unchanged; only the prose is gone.
-          */}
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 u-stagger">
-            <MetricTile
-              label="Median resolution time"
-              pending="Will show the median days to resolve, by ward and by department."
-            />
-            <MetricTile
-              label="SLA compliance"
-              pending="Will show the share of issues resolved before their deadline, with a 30-day trend."
-            />
-            <MetricTile
-              label="Open backlog age"
-              pending="Will show how long open issues have been waiting, in buckets."
-            />
-            <MetricTile
-              label="Reported against resolved"
-              pending="Will show a 90-day daily series of both."
-            />
-          </div>
-        </>
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 u-stagger">
+          <MetricTile
+            label="Currently overdue"
+            emphasis
+            {...(summary.data.overdueCount === null
+              ? { pending: "This figure could not be computed just now. It will return on the next refresh." }
+              : {
+                  value: summary.data.overdueCount.toLocaleString("en-IN"),
+                  trend: "Breached and still on the clock",
+                })}
+          />
+          <MetricTile label="Total resolved to date" value={summary.data.totalResolved.toLocaleString("en-IN")} />
+          <MetricTile
+            label="Ward holding the most overdue work"
+            {...(summary.data.topOverdueWard
+              ? { value: String(summary.data.topOverdueWard.count), unit: `in ${summary.data.topOverdueWard.name}` }
+              : { pending: "Nothing is overdue in any ward." })}
+          />
+          <MetricTile
+            label="Department holding the most overdue work"
+            {...(summary.data.topOverdueDepartment
+              ? {
+                  value: String(summary.data.topOverdueDepartment.count),
+                  unit: `in ${summary.data.topOverdueDepartment.name}`,
+                }
+              : { pending: "No department is holding overdue work." })}
+          />
+        </div>
       )}
+
+      <Breaching />
+
+      {metrics.isPending && <SkeletonTileGrid tiles={2} label="Loading the figures" />}
+      {metrics.isError && (
+        <ErrorState
+          action="Loading the dashboard figures"
+          problem={(metrics.error as ApiError)?.problem}
+          onRetry={() => void metrics.refetch()}
+        />
+      )}
+      {metrics.data && <Aggregates m={metrics.data} />}
 
       {/* Outside the summary's block: its own request, its own failure. */}
       <DepartmentRecord />
 
-      {summary.data && (
-        <>
-          <p className="mt-8 text-meta text-ink-muted">
-            Figures generated {absoluteDateTime(summary.data.generatedAt)}. Live
-            updates arrive with the event stream in a later phase; this page is
-            refetched on load.
-          </p>
-        </>
+      {metrics.data && (
+        <p className="mt-8 text-meta text-ink-muted">
+          Figures generated {absoluteDateTime(metrics.data.generatedAt)}. Days are calendar days in
+          Ludhiana. Resolution time runs from the first report to resolution; a fix counts as on time
+          when the department claimed it before the deadline.
+        </p>
       )}
     </PageShell>
+  );
+}
+
+function LiveBadge({ state }: { state: StreamState }) {
+  if (state === "unsupported") return null;
+  const live = state === "live";
+  return (
+    <span className="text-meta text-ink-muted inline-flex items-center gap-2" role="status">
+      <span
+        aria-hidden="true"
+        className="inline-block rounded-full"
+        style={{ width: 8, height: 8, background: live ? "var(--ink)" : "transparent", border: "1.5px solid var(--ink-muted)" }}
+      />
+      {live
+        ? "Live: overdue figures update as they change"
+        : state === "connecting"
+          ? "Connecting to live updates"
+          : "Live updates interrupted, reconnecting. Figures refresh every minute meanwhile."}
+    </span>
+  );
+}
+
+/** The live list of breaching issues, most overdue first. */
+function Breaching() {
+  const breaching = useBreaching();
+
+  return (
+    <section className="mt-8">
+      <h2 className="text-heading">Currently breaching</h2>
+      {breaching.isPending && <SkeletonTileGrid tiles={1} label="Loading the breaching list" />}
+      {breaching.isError && (
+        <ErrorState
+          action="Loading the breaching list"
+          problem={(breaching.error as ApiError)?.problem}
+          onRetry={() => void breaching.refetch()}
+        />
+      )}
+      {breaching.data && breaching.data.length === 0 && (
+        <p className="mt-2 text-body">Nothing is past its deadline right now.</p>
+      )}
+      {breaching.data && breaching.data.length > 0 && (
+        <ol className="mt-3 list-none p-0 border-t border-rule">
+          {breaching.data.map((b) => (
+            <li key={b.id} className="border-b border-rule py-3 flex flex-wrap items-center gap-x-5 gap-y-1">
+              <TicketRef publicRef={b.publicRef} issueId={b.id} />
+              <StatusRule status={b.status} overdue />
+              <span className="text-dense">
+                <Link href={`/issues/${b.id}`} className="text-ink underline">
+                  {b.categoryName}
+                </Link>{" "}
+                <span className="text-ink-muted">
+                  · {b.wardName}
+                  {b.departmentName ? ` · ${b.departmentName}` : ""} · {reporters(b.distinctReporterCount)}
+                </span>
+              </span>
+              <span className="ml-auto text-dense font-semibold" style={{ color: "var(--st-breached)" }}>
+                {humaniseMs(b.overdueSeconds * 1000)} overdue
+                {b.escalationLevel > 0 && (
+                  <span className="text-meta text-ink-muted font-normal"> · escalated to level {b.escalationLevel}</span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+/** Hours as the coarse unit a reader acts on. */
+function duration(hours: number): string {
+  return hours >= 48 ? `${(hours / 24).toFixed(1)} days` : `${hours.toFixed(1)} hours`;
+}
+
+function needs(m: DashboardMetrics, have: number, what: string): string {
+  const more = Math.max(1, m.minimumSample - have);
+  return `Needs ${more} more resolved issue${more === 1 ? "" : "s"} before ${what} means anything (${have} so far).`;
+}
+
+const FAILED = "This figure could not be computed just now. It will return on the next refresh.";
+
+function Aggregates({ m }: { m: DashboardMetrics }) {
+  const rt = m.resolutionTime;
+  const sla = m.slaCompliance;
+
+  return (
+    <>
+      <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 u-stagger">
+        <MetricTile
+          label="Median resolution time"
+          {...(!rt
+            ? { pending: FAILED }
+            : rt.overall.medianHours === null
+              ? { pending: needs(m, rt.overall.resolved, "a median") }
+              : {
+                  value: duration(rt.overall.medianHours).split(" ")[0],
+                  unit: duration(rt.overall.medianHours).split(" ")[1],
+                  trend: `Across ${rt.overall.resolved.toLocaleString("en-IN")} resolved issues, first report to resolution`,
+                })}
+        />
+        <MetricTile
+          label="SLA compliance"
+          {...(!sla
+            ? { pending: FAILED }
+            : sla.rate === null
+              ? { pending: needs(m, sla.resolved, "a compliance rate") }
+              : {
+                  value: `${Math.round(sla.rate * 100)}%`,
+                  trend: `${sla.onTime.toLocaleString("en-IN")} of ${sla.resolved.toLocaleString("en-IN")} fixes claimed before the deadline`,
+                })}
+        />
+      </div>
+
+      <section className="mt-8">
+        <h2 className="text-heading">Reported against resolved, last 90 days</h2>
+        <p className="mt-1 text-dense text-ink-muted" style={{ maxWidth: "var(--measure-prose)" }}>
+          New issues each day against issues resolved each day. Where the gray line runs above the
+          green one, the backlog is growing.
+        </p>
+        <div className="mt-3">
+          {m.reportedVsResolved ? (
+            <TrendChart
+              title="New issues and resolved issues per day, last 90 days"
+              series={[
+                { key: "reported", label: "New issues", color: "var(--chart-context)" },
+                { key: "resolved", label: "Resolved", color: "var(--st-resolved)" },
+              ]}
+              rows={m.reportedVsResolved}
+            />
+          ) : (
+            <p className="text-dense text-ink-muted">{FAILED}</p>
+          )}
+        </div>
+      </section>
+
+      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <section>
+          <h2 className="text-heading">Open backlog by age</h2>
+          <div className="mt-3">
+            {m.backlogAge ? (
+              <ColumnChart
+                title="Open issues by time since first report"
+                valueLabel="Open issues"
+                labelCaps
+                columns={m.backlogAge.map((b) => ({ key: b.label, label: b.label, values: [b.open] }))}
+              />
+            ) : (
+              <p className="text-dense text-ink-muted">{FAILED}</p>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-heading">Fixes on time, last 30 days</h2>
+          <div className="mt-3">
+            {sla ? (
+              <ColumnChart
+                title="Issues resolved per day, split by whether the fix was claimed before the deadline"
+                valueLabel="Resolved"
+                labelEvery={7}
+                parts={[
+                  { label: "On time", color: "var(--st-resolved)" },
+                  { label: "Late", color: "var(--chart-context)" },
+                ]}
+                columns={sla.trend.map((d) => ({
+                  key: d.day,
+                  label: shortDay(d.day),
+                  values: [d.onTime, d.resolved - d.onTime],
+                  detail:
+                    d.resolved === 0
+                      ? "Nothing resolved"
+                      : `${d.onTime} of ${d.resolved} on time`,
+                }))}
+              />
+            ) : (
+              <p className="text-dense text-ink-muted">{FAILED}</p>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {rt && (
+        <section className="mt-8">
+          <h2 className="text-heading">Median resolution time</h2>
+          <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <MedianTable caption="By department" rows={rt.byDepartment} m={m} />
+            <MedianTable caption="By ward" rows={rt.byWard} m={m} />
+          </div>
+        </section>
+      )}
+
+      {m.topClusters && m.topClusters.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-heading">Most-reported open issues</h2>
+          <ol className="mt-3 list-none p-0 border-t border-rule">
+            {m.topClusters.map((c) => (
+              <li key={c.id} className="border-b border-rule py-3 flex flex-wrap items-center gap-x-5 gap-y-1">
+                <TicketRef publicRef={c.publicRef} issueId={c.id} />
+                <StatusRule status={c.status} />
+                <Link href={`/issues/${c.id}`} className="text-dense text-ink underline">
+                  {c.categoryName}
+                </Link>
+                <span className="text-dense text-ink-muted">{c.wardName}</span>
+                <span className="ml-auto text-dense">
+                  <strong>{reporters(c.distinctReporterCount)}</strong>
+                  <span className="text-ink-muted"> · {c.reportCount} reports</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+    </>
+  );
+}
+
+function MedianTable({ caption, rows, m }: { caption: string; rows: Median[]; m: DashboardMetrics }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-dense border-collapse">
+        <caption className="text-left text-meta text-ink-muted pb-2">{caption}</caption>
+        <thead>
+          <tr className="border-b border-rule text-meta text-ink-muted">
+            <th scope="col" className="text-left font-medium py-2 pr-4">&nbsp;</th>
+            <th scope="col" className="text-right font-medium py-2 px-4">Median</th>
+            <th scope="col" className="text-right font-medium py-2 pl-4">Resolved</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.name} className="border-b border-rule">
+              <th scope="row" className="text-left font-normal py-2 pr-4">{r.name}</th>
+              <td className="text-right py-2 px-4 tabular-nums">
+                {r.medianHours === null ? (
+                  <span className="text-ink-muted">
+                    {r.resolved === 0 ? "Nothing resolved yet" : `Needs ${m.minimumSample - r.resolved} more`}
+                  </span>
+                ) : (
+                  duration(r.medianHours)
+                )}
+              </td>
+              <td className="text-right py-2 pl-4 tabular-nums">{r.resolved}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

@@ -37,4 +37,24 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
                                 @Param("offset") int offset);
 
     long countByReporterId(UUID reporterId);
+
+    /**
+     * Geodesic distance from a point to the furthest of these reports -- the
+     * exact cluster extent, by rescan. Used only by supervisor moderation
+     * (DD-063), where a human is waiting and the member set is being redrawn
+     * by hand, so there is no running bound to maintain. Ingest never calls
+     * this: it keeps the O(1) upper bound of DD-001.
+     */
+    @Query(value = """
+            SELECT COALESCE(MAX(ST_Distance(r.location::geography,
+                       ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography)), 0)
+            FROM reports r WHERE r.id IN (:ids)
+            """, nativeQuery = true)
+    double maxDistanceFrom(@Param("ids") java.util.Collection<UUID> ids,
+                           @Param("lat") double lat, @Param("lng") double lng);
+
+    List<Report> findByIdIn(java.util.Collection<UUID> ids);
+
+    /** Member reports of several issues at once: the review queue's thumbnails, in one query. */
+    List<Report> findByIssueIdInOrderByCreatedAtAsc(java.util.Collection<UUID> issueIds);
 }

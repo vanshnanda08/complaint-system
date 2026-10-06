@@ -163,6 +163,15 @@ public class Issue {
     @Column(name = "resolved_without_verification", nullable = false)
     private boolean resolvedWithoutVerification;
 
+    /**
+     * DD-063. Set when a supervisor merged this issue's reports into another.
+     * The issue then stays, REJECTED and empty of reports, so that its public
+     * reference still leads somewhere: the citizen who holds it is told where
+     * their report went rather than that it no longer exists.
+     */
+    @Column(name = "merged_into_id")
+    private UUID mergedIntoId;
+
     @Column(name = "reopen_count", nullable = false)
     private int reopenCount;
 
@@ -189,5 +198,16 @@ public class Issue {
         this.needsReview = true;
         this.reviewReason = reason;
         this.clusterConfidence = ClusterConfidence.LOW;
+    }
+
+    /**
+     * A supervisor has looked at this cluster and settled it -- by confirming
+     * it, or by splitting or merging it into a shape they chose. Confidence is
+     * HIGH from then on because a person, not the band arithmetic, decided it.
+     */
+    public void clearReview() {
+        this.needsReview = false;
+        this.reviewReason = null;
+        this.clusterConfidence = ClusterConfidence.HIGH;
     }
 }

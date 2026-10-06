@@ -6,6 +6,7 @@ import com.civictrack.issue.policy.IllegalTransitionException;
 import com.civictrack.issue.policy.TransitionGuardException;
 import com.civictrack.user.auth.EmailAlreadyRegisteredException;
 import com.civictrack.user.auth.InvalidCredentialsException;
+import com.civictrack.moderation.ModerationRefusedException;
 import com.civictrack.verification.AlreadyVerifiedException;
 import com.civictrack.verification.VerificationNotOpenException;
 import org.springframework.http.HttpStatus;
@@ -139,6 +140,19 @@ public class GlobalExceptionHandler {
         pd.setType(URI.create(BASE + "verification-not-open"));
         pd.setTitle("Not waiting for verification");
         pd.setProperty("status", ex.getStatus().name());
+        return pd;
+    }
+
+    // ------------------------------------------------------------------
+    // phase 7: moderation
+    // ------------------------------------------------------------------
+
+    /** 409: the split, merge or recategorisation cannot be made, and the detail says why. */
+    @ExceptionHandler(ModerationRefusedException.class)
+    ProblemDetail onModerationRefused(ModerationRefusedException ex) {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        pd.setType(URI.create(BASE + "moderation-refused"));
+        pd.setTitle("Cannot do that to this issue");
         return pd;
     }
 

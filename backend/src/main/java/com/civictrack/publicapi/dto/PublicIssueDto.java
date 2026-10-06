@@ -60,7 +60,12 @@ public record PublicIssueDto(
         int mergeRadiusM,
         double clusterExtentM,
         double clusterExtentCapM,
-        double positionalUncertaintyM
+        double positionalUncertaintyM,
+        // DD-063: where this ticket's reports went, if a supervisor merged it.
+        // Public on purpose -- the reference is the citizen's, and "merged into
+        // CT-..." is the only useful thing to tell somebody who follows it.
+        UUID mergedIntoId,
+        String mergedIntoRef
 ) {
     public static PublicIssueDto from(PublicIssueRow r) {
         return new PublicIssueDto(
@@ -88,7 +93,8 @@ public record PublicIssueDto(
                 // Blueprint 3.7's header line: sigma = 1/sqrt(sum of inverse-variance
                 // weights. Two reports at 10 m give about 7 m, twenty give about 2 m,
                 // which is the adaptive-radius argument made visible.
-                round1(CentroidMath.sigmaIssue(r.getSumW())));
+                round1(CentroidMath.sigmaIssue(r.getSumW())),
+                r.getMergedIntoId(), r.getMergedIntoRef());
     }
 
     private static double round1(double v) {

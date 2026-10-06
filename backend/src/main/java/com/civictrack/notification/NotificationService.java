@@ -75,10 +75,16 @@ public class NotificationService {
                         event.note() == null ? "This issue has been reopened." : event.note() + ".");
             }
 
+            // A merge closes the duplicate out as REJECTED (DD-063), but to the
+            // person who reported it nothing was turned down: their report now
+            // counts towards the other ticket. "Not taken forward" would be a
+            // false statement to them, so a merge says what happened instead.
             case REJECTED -> send(
                     notifications.findReporterIds(issue.getId(), false), issue,
                     NotificationType.REJECTED,
-                    "Not taken forward: " + what + " " + ref,
+                    issue.getMergedIntoId() != null
+                            ? "Joined with another report: " + what + " " + ref
+                            : "Not taken forward: " + what + " " + ref,
                     event.note());
 
             default -> {

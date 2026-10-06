@@ -1,7 +1,10 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { query, request } from "./api";
+import { useEffect, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiBase, query, request } from "./api";
 import type {
   BboxResult,
+  BreachingIssue,
+  DashboardMetrics,
   Category,
   DashboardSummary,
   DepartmentAccountability,
@@ -40,6 +43,8 @@ export const keys = {
   wards: () => ["wards"] as const,
   summary: () => ["dashboard", "summary"] as const,
   departments: () => ["dashboard", "departments"] as const,
+  metrics: () => ["dashboard", "metrics"] as const,
+  breaching: () => ["dashboard", "breaching"] as const,
   // Everything under ["me"] belongs to the signed-in user. Each key carries
   // the user id, so signing in as somebody else on the same tab never serves
   // the previous person's list from cache.
@@ -146,3 +151,60 @@ export function useDepartmentAccountability() {
   });
 }
 
+/**
+ * Blueprint 3.8: "Everything else is fetched on load and refetched every 60
+ * seconds." Only the overdue tile and the breaching list are live.
+ */
+const DASHBOARD_REFETCH = 60_000;
+
+export function useDashboardMetrics() {
+  return useQuery({
+    queryKey: keys.metrics(),
+    queryFn: () => request<DashboardMetrics>("/dashboard/metrics"),
+    staleTime: LIST_STALE,
+    refetchInterval: DASHBOARD_REFETCH,
+  });
+}
+
+export function useBreaching() {
+  return useQuery({
+    queryKey: keys.breaching(),
+    queryFn: () => request<BreachingIssue[]>("/dashboard/breaching"),
+    staleTime: LIST_STALE,
+  });
+}
+
+export type StreamState = "connecting" | "live" | "reconnecting" | "unsupported";
+
+/**
+ * Subscribes to the dashboard's event stream and refetches the two live
+ * figures whenever the server says they may have changed.
+ *
+ * The events carry no data, deliberately: the server sends "changed", the
+ * client refetches through the same endpoints it always uses, and so there is
+ * exactly one definition of "overdue" -- the server's. The server already
+ * coalesces bursts to at most one event a second, so this does not throttle.
+ *
+ * EventSource reconnects on its own after a drop; the state exists so the page
+ * can say "live" only while it is, rather than claiming it permanently.
+ */
+export function useDashboardStream(): StreamState {
+  const qc = useQueryClient();
+  const [state, setState] = useState<StreamState>(() =>
+    typeof EventSource === "undefined" ? "unsupported" : "connecting",
+  );
+
+  useEffect(() => {
+    if (typeof EventSource === "undefined") return;
+    const source = new EventSource(`${apiBase()}/stream/dashboard`);
+    source.addEventListener("ready", () => setState("live"));
+    source.addEventListener("changed", () => {
+      void qc.invalidateQueries({ queryKey: keys.summary() });
+      void qc.invalidateQueries({ queryKey: keys.breaching() });
+    });
+    source.onerror = () => setState("reconnecting");
+    return () => source.close();
+  }, [qc]);
+
+  return state;
+}

@@ -80,6 +80,13 @@
   --st-active: #1D4ED8;
   --st-pending: #A2570A;
   --st-resolved: #15713C;
+  /* Charts (phase 7). The context series in an emphasis chart: a gray that
+     clears 3:1 on the surface and sits ΔE 21 from --st-resolved in normal
+     vision, 16.8 under protanopia -- checked with the dataviz validator, not
+     by eye. Gray on purpose: colour means status, and "new issues reported"
+     is context for the resolved line, not a status of its own. */
+  --chart-context: #8A919B;
+  --chart-mark: #565B61;
   --st-reopened: #6828C4;
   --st-breached: #B01818;
   --st-closed: #55524C;
@@ -163,6 +170,9 @@
   --st-active: #86A9FF;
   --st-pending: #F0B45F;
   --st-resolved: #5FD48B;
+  /* Validated separately against the dark surface: ΔE 28.2 normal, 24.9 deutan. */
+  --chart-context: #6B7280;
+  --chart-mark: #A7A49D;
   --st-reopened: #C0A6FF;
   --st-breached: #FF8E82;
   --st-closed: #B5B0AA;

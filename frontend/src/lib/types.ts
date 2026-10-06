@@ -61,6 +61,9 @@ export interface PublicIssue {
   clusterExtentM: number;
   clusterExtentCapM: number;
   positionalUncertaintyM: number;
+  /** DD-063: set when a supervisor merged this ticket into another. The reports went there. */
+  mergedIntoId: string | null;
+  mergedIntoRef: string | null;
 }
 
 export interface PublicReport {
@@ -326,4 +329,137 @@ export interface DepartmentAccountability {
   fixesClaimed: number;
   reopened: number;
   reopenRate: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: the full dashboard, and supervisor moderation
+// ---------------------------------------------------------------------------
+
+/** Hours, first report to resolution. `medianHours` is null below the minimum sample. */
+export interface Median {
+  name: string;
+  medianHours: number | null;
+  resolved: number;
+}
+
+export interface ComplianceDay {
+  day: string;
+  resolved: number;
+  onTime: number;
+}
+
+export interface AgeBucket {
+  label: string;
+  fromDays: number;
+  toDays: number | null;
+  open: number;
+}
+
+export interface DayCount {
+  day: string;
+  reported: number;
+  resolved: number;
+}
+
+export interface TopCluster {
+  id: string;
+  publicRef: string;
+  categoryName: string;
+  wardName: string;
+  status: IssueStatus;
+  distinctReporterCount: number;
+  reportCount: number;
+}
+
+/**
+ * `GET /dashboard/metrics`. Each section is null when ITS query failed -- never
+ * as a stand-in for zero. A figure below `minimumSample` arrives as a null rate
+ * or median beside its count, and the tile says how many more it needs.
+ */
+export interface DashboardMetrics {
+  resolutionTime: { overall: Median; byDepartment: Median[]; byWard: Median[] } | null;
+  slaCompliance: { resolved: number; onTime: number; rate: number | null; trend: ComplianceDay[] } | null;
+  backlogAge: AgeBucket[] | null;
+  reportedVsResolved: DayCount[] | null;
+  topClusters: TopCluster[] | null;
+  minimumSample: number;
+  generatedAt: string;
+}
+
+export interface BreachingIssue {
+  id: string;
+  publicRef: string;
+  categoryName: string;
+  wardName: string;
+  departmentName: string | null;
+  status: IssueStatus;
+  effectiveDeadline: string;
+  overdueSeconds: number;
+  escalationLevel: number;
+  distinctReporterCount: number;
+}
+
+/** Why the clustering engine asked a person to look. The values IssueRepository writes. */
+export type ReviewReason = "LOW_CONF_MERGE" | "LOW_CONF_SPLIT" | "EXTENT_CAP";
+
+export interface ReviewItem {
+  id: string;
+  publicRef: string;
+  categoryCode: string;
+  categoryName: string;
+  wardId: string;
+  wardName: string;
+  status: IssueStatus;
+  priority: Priority;
+  reviewReason: ReviewReason | string | null;
+  lat: number;
+  lng: number;
+  reportCount: number;
+  distinctReporterCount: number;
+  extentM: number;
+  extentCapM: number;
+  mergeRadiusM: number;
+  firstReportedAt: string;
+  effectiveDeadline: string;
+  points: { reportId: string; lat: number; lng: number; accuracyM: number; clusterDecision: ClusterDecision }[];
+}
+
+export interface ReviewPage {
+  items: ReviewItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ClusterGeometry {
+  lat: number;
+  lng: number;
+  extentM: number;
+  reportCount: number;
+  distinctReporters: number;
+  positionalUncertaintyM: number;
+  firstReportedAt: string;
+}
+
+export interface SplitPreview {
+  remaining: ClusterGeometry;
+  created: ClusterGeometry;
+}
+
+export interface ModerationResult {
+  issueId: string;
+  publicRef: string;
+  relatedIssueId: string | null;
+  relatedPublicRef: string | null;
+}
+
+export interface ModerationEntry {
+  id: number;
+  action: "CONFIRM" | "SPLIT" | "MERGE" | "RECATEGORISE";
+  issueId: string;
+  relatedIssueId: string | null;
+  actorRole: string;
+  note: string | null;
+  createdAt: string;
+  detail: Record<string, unknown>;
 }

@@ -38,6 +38,8 @@ public class DashboardService {
     private static final Logger log = LoggerFactory.getLogger(DashboardService.class);
 
     private final IssueRepository issues;
+    private final DashboardQueries queries;
+    private final DashboardProperties props;
     private final Clock clock;
 
     @Transactional(readOnly = true)
@@ -69,6 +71,35 @@ public class DashboardService {
         return issues.findDepartmentAccountability().stream()
                 .map(DepartmentAccountabilityDto::from)
                 .toList();
+    }
+
+    /**
+     * The phase 7 aggregates. One request, but every section is its own
+     * {@link #tile}: the median query failing must not take the backlog
+     * histogram with it.
+     */
+    @Transactional(readOnly = true)
+    public DashboardMetricsDto metrics() {
+        Instant now = clock.instant();
+        return new DashboardMetricsDto(
+                tile("resolution time", () -> new DashboardMetricsDto.ResolutionTime(
+                        queries.overallMedian(), queries.medianByDepartment(), queries.medianByWard())),
+                tile("sla compliance", () -> queries.slaCompliance(now)),
+                tile("backlog age", () -> queries.backlogAge(now)),
+                tile("reported vs resolved", () -> queries.reportedVsResolved(now)),
+                tile("top clusters", queries::topClusters),
+                props.minimumSample(),
+                now);
+    }
+
+    /**
+     * The live breaching list. Its own endpoint because it is the one figure
+     * the event stream refreshes, and refreshing it must not recompute every
+     * median in the city.
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<BreachingIssueDto> breaching() {
+        return queries.breaching(clock.instant());
     }
 
     private <T> T tile(String name, Supplier<T> query) {

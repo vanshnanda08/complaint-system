@@ -27,4 +27,16 @@ public class DashboardController {
     public java.util.List<DepartmentAccountabilityDto> departments() {
         return dashboard.departments();
     }
+
+    /** Medians, SLA compliance, backlog age, the 90-day trend, top clusters. Each section nullable on failure. */
+    @GetMapping("/metrics")
+    public DashboardMetricsDto metrics() {
+        return dashboard.metrics();
+    }
+
+    /** Breached and on the clock, most overdue first. Refreshed live over /stream/dashboard. */
+    @GetMapping("/breaching")
+    public java.util.List<BreachingIssueDto> breaching() {
+        return dashboard.breaching();
+    }
 }

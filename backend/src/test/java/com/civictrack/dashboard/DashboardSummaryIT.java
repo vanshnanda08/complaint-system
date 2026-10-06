@@ -88,7 +88,8 @@ class DashboardSummaryIT extends IntegrationTestBase {
         given(broken.findTopBreachedWard(any())).willReturn(java.util.Optional.empty());
         given(broken.findTopBreachedDepartment(any())).willReturn(java.util.Optional.empty());
 
-        DashboardSummaryDto summary = new DashboardService(broken, clock).summary();
+        // summary() reads only the repository; the phase 7 aggregates are not involved.
+        DashboardSummaryDto summary = new DashboardService(broken, null, null, clock).summary();
 
         assertThat(summary.overdueCount())
                 .as("a tile that could not be computed reports null, not zero")

@@ -61,4 +61,11 @@ export interface MapCanvasProps {
   onViewportChange?: (v: Viewport) => void;
   onPinPlace?: (lat: number, lng: number) => void;
   fitToMarkers?: boolean;
+  /**
+   * Shift-drag draws a box and reports its bounds: the split tool's "select by
+   * dragging a box" (blueprint 3.18). Leaflet's own shift-drag zoom is turned
+   * off when this is set, since the gesture now means something else. Clicking
+   * individual markers still works, and is the path on touch screens.
+   */
+  onBoxSelect?: (bounds: Omit<Viewport, "zoom">) => void;
 }

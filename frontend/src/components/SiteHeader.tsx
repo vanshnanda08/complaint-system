@@ -31,6 +31,8 @@ interface NavLink {
   label: string;
   icon: IconName;
   staffOnly?: boolean;
+  /** Supervisors and administrators: the moderation tools (blueprint 3.17). */
+  supervisorOnly?: boolean;
 }
 
 const MENU_LINKS: NavLink[] = [
@@ -41,9 +43,10 @@ const MENU_LINKS: NavLink[] = [
   // "Work queue", not "Team". The link goes to a queue of work items; the
   // blueprint's vocabulary rule (§9) is that the label names the thing.
   { href: "/staff/queue", label: "Work queue", icon: "inbox", staffOnly: true },
+  { href: "/supervisor/review", label: "Review queue", icon: "layers", supervisorOnly: true },
 ];
 
-type IconName = "grid" | "list" | "pin" | "flag" | "inbox" | "bell" | "signOut" | "signIn";
+type IconName = "grid" | "list" | "pin" | "flag" | "inbox" | "layers" | "bell" | "signOut" | "signIn";
 
 /** Decorative throughout: every icon here sits beside its own text label. */
 function Icon({ name }: { name: IconName }) {
@@ -101,6 +104,13 @@ function Icon({ name }: { name: IconName }) {
           <path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" />
         </svg>
       );
+    case "layers":
+      return (
+        <svg {...common}>
+          <circle cx="9" cy="10" r="5" />
+          <circle cx="15" cy="14" r="5" />
+        </svg>
+      );
     case "bell":
       return (
         <svg {...common}>
@@ -152,6 +162,7 @@ export function SiteHeader() {
   const pathname = usePathname();
   const theme = useTheme();
   const isStaff = session && session.role !== "CITIZEN";
+  const isSupervisor = session && (session.role === "SUPERVISOR" || session.role === "ADMIN");
 
   // Restores the theme class after React's dev-only remount clears it. See
   // useThemeSync -- no-op in production.
@@ -201,6 +212,7 @@ export function SiteHeader() {
 
   const renderLink = (l: NavLink) => {
     if (l.staffOnly && !isStaff) return null;
+    if (l.supervisorOnly && !isSupervisor) return null;
     // Exact match, or a child route under it. Plain `startsWith` would light
     // up "/issues" while sitting on "/issues-archive".
     const isActive = pathname === l.href || pathname.startsWith(`${l.href}/`);

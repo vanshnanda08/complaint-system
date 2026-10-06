@@ -171,6 +171,7 @@ public class Fixtures {
 
     /** Deletes everything an issue-scoped test could have written. */
     public void clearIssues() {
+        jdbc.update("DELETE FROM moderation_actions");
         jdbc.update("DELETE FROM escalation_events");
         jdbc.update("DELETE FROM verifications");
         jdbc.update("DELETE FROM notifications");
