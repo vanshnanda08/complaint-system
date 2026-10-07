@@ -16,10 +16,9 @@
 # taking every table that references it down with it. The target database has
 # to have PostGIS in place BEFORE the restore starts.
 #
-# And the reason that was never noticed: pg_restore EXITS 0 ANYWAY. It reports
-# "errors ignored on restore: 36" as a warning and returns success, so the
-# obvious check -- did the command succeed? -- says yes about a database with
-# nothing in it. This script checks the row counts instead.
+# The previous pipeline swallowed pg_restore errors. This script now excludes
+# only the already-created public schema, fails on all other restore errors,
+# and checks row counts as an additional guard against incomplete dumps.
 #
 # Usage:
 #   ./scripts/restore.sh <dump.gz> <target-jdbc-url> <user> [password-env-var]
@@ -69,34 +68,40 @@ if [ "${1:-}" = "--self-test" ]; then
   fi
   [ -n "$DUMP" ] && [ -f "$DUMP" ] || { echo "No dump found. Pass one explicitly." >&2; exit 1; }
 
-  CONTAINER=civictrack-restore-selftest
+  CONTAINER="civictrack-restore-selftest-$$"
   echo "Self-test: restoring $DUMP into a throwaway postgis/postgis:17-3.4"
   echo "The version matters: pg_restore refuses a dump from a server newer than"
   echo "itself, and the deployed database is PostgreSQL 17."
   echo
 
-  trap 'docker rm -f "$CONTAINER" >/dev/null 2>&1 || true' EXIT
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  RESTORE_LIST=$(mktemp)
+  trap 'docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; rm -f "$RESTORE_LIST"' EXIT
   docker run -d --name "$CONTAINER" \
     -e POSTGRES_PASSWORD=selftest -e POSTGRES_USER=selftest -e POSTGRES_DB=postgres \
     postgis/postgis:17-3.4 >/dev/null
 
   printf 'Waiting for the container'
+  ATTEMPTS=0
   until docker exec "$CONTAINER" pg_isready -U selftest -d postgres >/dev/null 2>&1; do
+    ATTEMPTS=$((ATTEMPTS + 1))
+    [ "$ATTEMPTS" -le 60 ] || { echo ' Database startup timed out.' >&2; exit 1; }
     printf '.'; sleep 2
   done
   echo ' ready'
 
-  docker exec "$CONTAINER" psql -qU selftest -d postgres \
+  docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -qU selftest -d postgres \
     -c "CREATE DATABASE restored OWNER selftest;" >/dev/null
-  docker exec "$CONTAINER" psql -qU selftest -d restored -c "$EXTENSIONS" >/dev/null
+  docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -qU selftest -d restored -c "$EXTENSIONS" >/dev/null
   echo "PostGIS, btree_gist and pgcrypto created in the target."
 
+  # public already exists because PostGIS uses it. Exclude only that known
+  # schema creation, and fail on every other restore error (including indexes).
+  gzip -dc "$DUMP" | docker exec -i "$CONTAINER" pg_restore --list \
+    | awk '!/ SCHEMA - public /' > "$RESTORE_LIST"
+  docker cp "$RESTORE_LIST" "$CONTAINER:/tmp/restore.list" >/dev/null
   gzip -dc "$DUMP" | docker exec -i "$CONTAINER" \
-    pg_restore -U selftest -d restored --no-owner --no-acl 2>&1 \
-    | grep -v 'schema "public" already exists' \
-    | grep -v 'CREATE SCHEMA public' \
-    | grep -v '^--$' || true
+    pg_restore -U selftest -d restored --no-owner --no-acl \
+      --exit-on-error --use-list=/tmp/restore.list
 
   echo
   echo "Row counts in the restored database:"
@@ -165,15 +170,21 @@ run_psql() {
 }
 
 echo "Creating extensions in the target (the dump does not carry them)..."
-run_psql -q -c "$EXTENSIONS"
+run_psql -v ON_ERROR_STOP=1 -q -c "$EXTENSIONS"
 
 echo "Restoring..."
-gzip -dc "$DUMP" | docker run --rm -i -e PGPASSWORD="${!PW_VAR}" postgres:17-alpine \
-  pg_restore -h "$HOST" -p "$PORT" -U "$TARGET_USER" -d "$DB" --no-owner --no-acl 2>&1 \
-  | grep -v 'schema "public" already exists' | grep -v 'CREATE SCHEMA public' || true
+RESTORE_LIST=$(mktemp)
+trap 'rm -f "$RESTORE_LIST"' EXIT
+gzip -dc "$DUMP" | docker run --rm -i postgres:17-alpine pg_restore --list \
+  | awk '!/ SCHEMA - public /' > "$RESTORE_LIST"
+export PGPASSWORD="${!PW_VAR}"
+gzip -dc "$DUMP" | docker run --rm -i -e PGPASSWORD \
+  -v "$RESTORE_LIST:/tmp/restore.list:ro" postgres:17-alpine \
+  pg_restore -h "$HOST" -p "$PORT" -U "$TARGET_USER" -d "$DB" --no-owner --no-acl \
+    --exit-on-error --use-list=/tmp/restore.list
 
 echo
-echo "Verifying -- pg_restore exits 0 even when it restored nothing:"
+echo "Verifying row counts after a successful restore:"
 COUNTS=$(run_psql -tAF' ' -c "$(count_query)" 2>/dev/null | tr -d '\r' || true)
 FAILED=0
 for t in $EXPECTED_TABLES; do

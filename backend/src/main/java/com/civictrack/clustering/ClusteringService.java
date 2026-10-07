@@ -216,7 +216,7 @@ public class ClusteringService {
         Instant now = clock.instant();
 
         Issue issue = new Issue();
-        issue.setPublicRef(issueRepo.nextPublicRef());
+        issue.setPublicRef(com.civictrack.common.generation.GenerationScope.publicRef(issueRepo::nextPublicRef));
         issue.setCategoryCode(category.getCode());
         issue.setWardId(wardId);
         issue.setDepartmentId(category.getDepartmentId());
@@ -339,6 +339,7 @@ public class ClusteringService {
                                ClusterDecision decision, Double distance,
                                Double effectiveRadius, Double projectedExtent) {
         Report report = new Report();
+        report.setCreatedAt(clock.instant());
         report.setIssueId(issueId);
         report.setReporterId(cmd.reporterId());
         report.setDeviceId(cmd.deviceId());

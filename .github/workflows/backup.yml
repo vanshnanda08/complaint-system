@@ -1,0 +1,48 @@
+name: Weekly database backup
+
+on:
+  schedule:
+    - cron: "30 20 * * 6" # Sunday 02:00 Asia/Kolkata
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Back up and verify restoration
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          DATABASE_USER: ${{ secrets.BACKUP_DATABASE_USER }}
+          DATABASE_PASSWORD: ${{ secrets.BACKUP_DATABASE_PASSWORD }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${BACKUP_PASSPHRASE:?Configure BACKUP_PASSPHRASE before activating backups}"
+          ./scripts/backup.sh "$RUNNER_TEMP/civictrack-backups"
+          dump=$(find "$RUNNER_TEMP/civictrack-backups" -name '*.dump.gz' -type f -print -quit)
+          ./scripts/restore.sh --self-test "$dump"
+          mkdir -p "$RUNNER_TEMP/civictrack-encrypted"
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-fd 0 --symmetric --cipher-algo AES256 \
+            --output "$RUNNER_TEMP/civictrack-encrypted/$(basename "$dump").gpg" "$dump"
+      - name: Store only the encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ github.run_id }}
+          path: ${{ runner.temp }}/civictrack-encrypted/*.gpg
+          if-no-files-found: error
+          retention-days: 56
+      - name: Remove temporary plaintext dumps
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/civictrack-backups"

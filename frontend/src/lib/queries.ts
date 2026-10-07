@@ -140,6 +140,7 @@ export function useDashboardSummary() {
     queryKey: keys.summary(),
     queryFn: () => request<DashboardSummary>("/dashboard/summary"),
     staleTime: LIST_STALE,
+    refetchInterval: DASHBOARD_REFETCH,
   });
 }
 
@@ -148,6 +149,7 @@ export function useDepartmentAccountability() {
     queryKey: keys.departments(),
     queryFn: () => request<DepartmentAccountability[]>("/dashboard/departments"),
     staleTime: LIST_STALE,
+    refetchInterval: DASHBOARD_REFETCH,
   });
 }
 
@@ -171,6 +173,7 @@ export function useBreaching() {
     queryKey: keys.breaching(),
     queryFn: () => request<BreachingIssue[]>("/dashboard/breaching"),
     staleTime: LIST_STALE,
+    refetchInterval: DASHBOARD_REFETCH,
   });
 }
 

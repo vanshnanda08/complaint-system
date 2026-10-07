@@ -1,5 +1,6 @@
 package com.civictrack.seed;
 
+import com.civictrack.common.generation.GenerationScope;
 import com.civictrack.category.Category;
 import com.civictrack.category.CategoryRepository;
 import com.civictrack.clustering.ClusterOutcome;
@@ -13,8 +14,6 @@ import com.civictrack.ward.Ward;
 import com.civictrack.ward.WardRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.locationtech.jts.geom.Envelope;
-import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.Point;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
@@ -43,40 +42,6 @@ public class SeedDataGenerator implements CommandLineRunner {
     private final ClusteringService clusteringService;
     private final IssueLifecycleService lifecycleService;
     private final JdbcTemplate jdbcTemplate;
-
-    /**
-     * Standing rule: time comes from the injected clock, never from
-     * {@code Instant.now()}. It matters here even though this is a generator
-     * rather than a service -- the corpus is spread backwards over a window
-     * from "now", so that origin is the one thing every simulated timestamp
-     * derives from.
-     *
-     * <p>THE CORPUS IS NOT CURRENTLY REPRODUCIBLE, and an earlier version of
-     * this comment claimed it was. Measured, by fingerprinting the corpus and
-     * reseeding: two runs of the same configuration produce different
-     * fingerprints and different label files. Three things break it, and the
-     * fixed {@code random-seed} addresses none of them:
-     *
-     * <ul>
-     *   <li>Primary keys are {@code @GeneratedValue(GenerationType.UUID)} and
-     *       {@code gen_random_uuid()}. Nothing seeds either, so every run
-     *       assigns different ids and different {@code public_ref} values.
-     *   <li>The clock bean is {@code Clock.systemUTC()}. The 90-day window
-     *       slides with wall time, so which issues fall the far side of the
-     *       "older than 14 days" cutoff changes between runs.
-     *   <li>{@code random-seed} governs only the {@code java.util.Random} draws
-     *       -- locations, cluster sizes, report times. It has no reach into
-     *       either of the above.
-     * </ul>
-     *
-     * <p>Phase 8's evaluation is documented as depending on reproducibility, so
-     * this has to be closed before that phase and not at it. Closing it means
-     * a fixed {@code Clock} bean under the seed profile and seeded id
-     * generation for issues and reports -- neither hard, but both are real
-     * changes to how the application is wired, and doing them silently as part
-     * of a corpus-size change would be the wrong place. Recorded as DD-046.
-     */
-    private final java.time.Clock clock;
 
     record GeneratedReport(
         UUID defectId,
@@ -111,20 +76,28 @@ public class SeedDataGenerator implements CommandLineRunner {
         // the first run would silently stop describing the data. Phase 8's
         // evaluation reads those labels.
         //
-        // `force` exists for the deliberate case -- reseeding a scratch
-        // database -- and has to be asked for by name.
+        // A scratch evaluation must start empty. Never append duplicate stable IDs.
         long existing = jdbcTemplate.queryForObject("SELECT count(*) FROM issues", Long.class);
         if (existing > 0 && !props.force()) {
             log.warn("Seed skipped: {} issues already exist. "
-                     + "Set civictrack.seed.force=true to seed anyway (it will ADD a second "
-                     + "corpus, not replace the first).", existing);
+                     + "Use a fresh scratch database to reproduce the corpus.", existing);
             return;
         }
 
+        if (existing > 0) {
+            throw new IllegalStateException("Reproducible seeding requires an empty issue database; force cannot append stable IDs.");
+        }
+        try (GenerationScope ignored = GenerationScope.open(props.randomSeed(), props.referenceTime())) {
+            generate();
+        }
+    }
+
+    private void generate() throws Exception {
         log.info("Starting Seed Data Generation... Corpus size: {}", props.corpusSize());
 
         Random random = new Random(props.randomSeed());
-        List<Category> categories = categoryRepo.findAll();
+        List<Category> categories = categoryRepo.findAll().stream()
+                .sorted(Comparator.comparing(Category::getCode)).toList();
         List<Ward> wards = wardRepo.findAll();
 
         if (categories.isEmpty() || wards.isEmpty()) {
@@ -133,13 +106,13 @@ public class SeedDataGenerator implements CommandLineRunner {
         }
 
         List<GeneratedReport> reportsToIngest = new ArrayList<>();
-        Instant now = clock.instant();
+        Instant now = props.referenceTime();
 
         int targetReports = props.corpusSize();
         int generatedCount = 0;
 
         while (generatedCount < targetReports) {
-            UUID defectId = UUID.randomUUID();
+            UUID defectId = GenerationScope.nextUuid();
             Category cat = categories.get(random.nextInt(categories.size()));
             Point defectLocation = generateValidDefectLocation(random);
             
@@ -238,6 +211,12 @@ public class SeedDataGenerator implements CommandLineRunner {
             }
         }
 
+        jdbcTemplate.update("""
+            UPDATE issues i SET last_reported_at = r.last_report
+            FROM (SELECT issue_id, MAX(created_at) AS last_report FROM reports GROUP BY issue_id) r
+            WHERE i.id = r.issue_id
+            """);
+
         // Write labels file
         try (PrintWriter pw = new PrintWriter(new FileWriter(props.labelsFilePath()))) {
             for (String line : labelLines) {
@@ -258,23 +237,16 @@ public class SeedDataGenerator implements CommandLineRunner {
         //
         // The selection hashes the issue id rather than calling `random()`.
         //
-        // To be clear about what that does and does not buy: it is NOT
-        // reproducibility across runs. The ids are random UUIDs, so the hash is
-        // a deterministic function of a non-deterministic input -- see the note
-        // on the clock field above. What it buys is that the split is stable
-        // for a given corpus, so re-running these statements against the same
-        // database is idempotent, and that the two predicates below can be made
-        // genuinely independent of one another by hashing different bytes,
-        // which is what `random()` per-row could not express.
+        // Stable UUIDs make these independent status samples reproducible across runs.
         log.info("Applying simulated statuses to older issues...");
         jdbcTemplate.update("""
             UPDATE issues SET
                 status = 'RESOLVED',
                 resolved_at = first_reported_at + make_interval(hours => 48),
                 updated_at  = first_reported_at + make_interval(hours => 48)
-            WHERE first_reported_at < now() - interval '14 days'
+            WHERE first_reported_at < CAST(? AS timestamptz) - interval '14 days'
               AND ('x' || substr(md5(id::text), 1, 8))::bit(32)::bigint % 100 < 60
-        """);
+        """, java.sql.Timestamp.from(now));
 
         // Only part of the resolved set closes. The rest stay RESOLVED, which
         // is a state a citizen can still act on -- and an earlier version
@@ -286,14 +258,14 @@ public class SeedDataGenerator implements CommandLineRunner {
                 status = 'CLOSED',
                 closed_at = resolved_at + make_interval(days => 7)
             WHERE status = 'RESOLVED'
-              AND resolved_at < now() - interval '7 days'
+              AND resolved_at < CAST(? AS timestamptz) - interval '7 days'
               -- A DIFFERENT slice of the digest to the one above. Reusing
               -- substr(...,1,8) made the two predicates the same draw on the
               -- same key, so every issue that resolved also closed and
               -- RESOLVED stayed empty -- the exact bug this split was added to
               -- fix, reintroduced by hashing the same bytes twice.
               AND ('x' || substr(md5(id::text), 9, 8))::bit(32)::bigint % 100 < 65
-        """);
+        """, java.sql.Timestamp.from(now));
 
         simulateWorkInProgress(random);
 

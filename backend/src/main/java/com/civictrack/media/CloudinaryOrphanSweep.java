@@ -115,9 +115,9 @@ public class CloudinaryOrphanSweep {
     }
 
     /**
-     * Of these public ids, the ones no report references.
+     * Of these public ids, the ones neither report evidence nor resolution proof references.
      *
-     * <p>Matched with {@code LIKE '%' || id || '%'} rather than on equality,
+     * <p>Matched with literal {@code strpos(url, id)} (underscores are not wildcards) rather than on equality,
      * because the column holds a full delivery URL and now carries a
      * transformation segment in the middle of it -- see
      * {@code withDelivery} in the frontend. Comparing the stored URL to a
@@ -134,7 +134,10 @@ public class CloudinaryOrphanSweep {
                   FROM unnest(?) AS c(public_id)
                  WHERE NOT EXISTS (
                        SELECT 1 FROM reports r
-                        WHERE r.photo_url LIKE '%' || c.public_id || '%')
+                        WHERE strpos(r.photo_url, c.public_id) > 0)
+                   AND NOT EXISTS (
+                       SELECT 1 FROM issues i
+                        WHERE strpos(i.resolution_photo_url, c.public_id) > 0)
                 """;
         return jdbc.query(
                 sql,

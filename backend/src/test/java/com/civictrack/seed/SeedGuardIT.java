@@ -59,10 +59,9 @@ class SeedGuardIT extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("force is required to seed a populated database, and says what it does")
+    @DisplayName("populated databases remain intact")
     void forceIsOptIn() {
-        // Documents the escape hatch: `force` adds a corpus, it does not
-        // replace one. Anybody reaching for it should know that.
+        // A repeat seed run must not replace or append application data.
         assertThat(jdbc.queryForObject("SELECT count(*) FROM issues", Long.class)).isPositive();
     }
 }

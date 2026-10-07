@@ -31,6 +31,6 @@ public class TimeConfig {
 
     @Bean
     Clock clock() {
-        return Clock.systemUTC();
+        return com.civictrack.common.generation.GenerationScope.clock(Clock.systemUTC());
     }
 }

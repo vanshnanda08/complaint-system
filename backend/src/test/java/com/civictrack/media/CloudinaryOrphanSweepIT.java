@@ -100,6 +100,23 @@ class CloudinaryOrphanSweepIT extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("staff resolution proof is retained even when no citizen report references it")
+    void resolutionProofIsNotAnOrphan() {
+        reportWithPhoto("https://res.cloudinary.com/demo/image/upload/before.jpg");
+        jdbc.update("UPDATE issues SET resolution_photo_url = ?",
+                "https://res.cloudinary.com/demo/image/upload/f_auto/v1/after_fix.jpg");
+        assertThat(sweep.orphansAmong(List.of("before", "after_fix", "abandoned")))
+                .containsExactly("abandoned");
+    }
+
+    @Test
+    @DisplayName("underscores in public IDs are literal rather than SQL wildcard matches")
+    void idsAreLiteral() {
+        reportWithPhoto("https://res.cloudinary.com/demo/image/upload/photoXone.jpg");
+        assertThat(sweep.orphansAmong(List.of("photo_one"))).containsExactly("photo_one");
+    }
+
+    @Test
     @DisplayName("an empty batch is an empty result")
     void emptyBatchIsAnEmptyResult() {
         assertThat(sweep.orphansAmong(List.of())).isEmpty();

@@ -12,4 +12,13 @@ civictrack:
     # to end is worth more here than a corpus that proves the query paginates.
     corpus-size: 250
     random-seed: 42
+    # Change deliberately; identical settings on an empty database reproduce the same corpus.
+    reference-time: "2026-10-01T00:00:00Z"
     labels-file-path: "ground_truth_labels.csv"
+  # A scheduled writer must not race the deterministic seed runner.
+  sla:
+    cron: "-"
+  verification:
+    cron: "-"
+  cloudinary:
+    cron: "-"

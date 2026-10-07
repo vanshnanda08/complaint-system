@@ -13,7 +13,7 @@ dashboard publishes the resulting numbers without a login.
 
 ## Project status
 
-**Phases 0–7 complete.** Month one (weeks 1–4) plus citizen verification
+**Phases 0–7 implemented; deployment activation checks remain.** Month one (weeks 1–4) plus citizen verification
 (week 5) and supervisor moderation with the full live dashboard (week 6) are
 built and tested. Evaluation (week 7) and anti-abuse and the write-up (week 8)
 are next.
@@ -23,10 +23,10 @@ are next.
 | Frontend | https://civic-track-six.vercel.app |
 | API | https://civictrack-api.onrender.com |
 | API docs (Swagger) | https://civictrack-api.onrender.com/swagger-ui/index.html |
-| Backend tests | **219** passing, against real PostGIS via Testcontainers |
+| Backend tests | **224** passing, against real PostGIS via Testcontainers |
 | Frontend tests | **68** passing, plus lint, typecheck and production build in CI |
 | CI | Green on `main` (GitHub Actions) |
-| Deployed corpus | 110 issues from 250 reports, across eight of the nine statuses |
+| Deployed corpus | 113 issues / 254 reports in the verified backup taken 2026-10-07; counts change with usage |
 
 > The API runs on Render's free tier and sleeps after 15 minutes idle. The
 > first request after a quiet spell takes up to about a minute; the application
@@ -40,9 +40,9 @@ are next.
 | 2 | Clustering engine: candidate query, accuracy-weighted centroid, adaptive radius, extent cap, advisory lock, post-lock re-read, concurrency test; seed corpus with ground-truth labels | ✅ done |
 | 3 | State machine and `TransitionPolicy`, status history, staff queue, SLA clock, escalation ladder, ShedLock sweep, priority ageing, JWT auth and RBAC | ✅ done |
 | 4 | Public read API; Next.js frontend: report composer, map, issue detail, **cluster inspector**, staff queue and work view, public dashboard, auth with httpOnly refresh cookie | ✅ done |
-| 5 | Deployment: Docker image with CDS, Supabase, Render, Vercel, GitHub Actions CI, keep-alive, backup with a tested restore, Swagger UI, Cloudinary photo upload and nightly orphan sweep | ✅ done |
+| 5 | Deployment: Docker image with CDS, Supabase, Render, Vercel, GitHub Actions CI, keep-alive, backup with a tested restore, Swagger UI, Cloudinary photo upload and nightly orphan sweep | Implemented; remote activation checks pending |
 | 6 | Citizen verification: quorum, one vote per citizen per fix, timeout sweep, auto-close, reopen on rejection, `/me/verify`, notification centre, resolved-without-verification rate per department | ✅ done |
-| 7 | Supervisor tools (assignment board, review queue, split/merge with full recomputation and a permanent log, recategorise), full dashboard aggregates, SSE live updates | ✅ done |
+| 7 | Supervisor tools (assignment board, review queue, split/merge with full recomputation and a permanent log, recategorise), full dashboard aggregates behind expandable headings, SSE live updates | ✅ done |
 
 ### Next
 
@@ -185,7 +185,7 @@ account at all.
 ## Testing
 
 ```bash
-cd backend  && mvn clean test    # 219 integration and unit tests, Testcontainers
+cd backend  && mvn clean test    # 224 integration and unit tests, Testcontainers
 cd frontend && npm run test      # 68 unit tests
 cd frontend && npm run lint      # includes the Leaflet import boundary rule
 ```
@@ -200,8 +200,9 @@ two false diagnoses of a working query. Likewise, restart `next start` after
 `npm run build` — a stale server serves old chunks and the failure looks like an
 application bug.
 
-Every test that claims to guard a behaviour was verified by breaking that
-behaviour and watching the test go red, then restoring it.
+The clustering and stream mutation checks are recorded in the month-two report.
+The seed regression compares the complete report and issue records and label files
+across two runs with different wall-clock dates.
 
 `tools/` holds four harnesses that check what unit tests structurally cannot,
 because they need the running server: the API contract against the declared
@@ -264,8 +265,9 @@ time and asserts it loads with `-Xshare:on`, bringing application startup from
 container.
 
 Photos are compressed in the browser and uploaded straight to Cloudinary with
-an unsigned, size- and format-restricted preset; a nightly job deletes uploads
-that never became a report. Seeded demo reports deliberately point at
+an unsigned, size- and format-restricted preset. The nightly cleanup protects
+both report photos and resolution proof; it defaults to dry-run until deployed
+credentials and a reviewed dry-run establish that deletion is appropriate. Seeded demo reports deliberately point at
 Cloudinary's public sample image.
 
 ## Security notes
@@ -278,3 +280,63 @@ bytes.
 The refresh token never reaches JavaScript: Next.js route handlers keep it in
 an httpOnly cookie and exchange it server-side. The access token lives only in
 memory.
+
+## Reproducible evaluation data
+
+Use a **fresh scratch database**, never the deployed database. The `seed` profile
+uses `civictrack.seed.random-seed=42` and
+`civictrack.seed.reference-time=2026-10-01T00:00:00Z` by default. Corpus size is
+configurable. With the same reference data and settings, repeated runs produce
+identical report/issue IDs, ticket references, clustering results and labels.
+The regression test verifies this for 250 reports even when the wall clock changes.
+
+Stable IDs and the fixed clock apply only on the seed runner's thread and are
+removed when it finishes or throws. Ordinary API requests retain random UUIDs and
+the current clock. Scheduled data writers are disabled in the seed profile.
+A populated database is skipped; the legacy `force` option now fails instead of
+appending duplicate deterministic IDs. Use a new scratch database for each run.
+Seed tickets use `CT-2026-S000001` to avoid the ordinary ticket sequence.
+
+```bash
+cd backend
+mvn -Dtest=SeedReproducibilityIT,GenerationScopeTest test
+# Set datasource credentials to a fresh scratch database, then:
+mvn spring-boot:run -Dspring-boot.run.profiles=seed \
+  -Dspring-boot.run.arguments="--civictrack.seed.corpus-size=250"
+```
+
+The reference corpus is ready for phase 8. F1/radius sweeps, latency benchmarks
+and extent-cap comparisons are still phase 8 deliverables, not completed measurements.
+
+## Backup and cleanup operations
+
+`.github/workflows/backup.yml` schedules a backup every Sunday at 02:00 IST.
+It restores the dump into a disposable PostGIS database, fails on restore errors,
+encrypts it with GPG, and retains only the encrypted artifact for 56 days.
+Configure these GitHub Actions secrets before enabling the workflow on `main`:
+`BACKUP_DATABASE_URL`, `BACKUP_DATABASE_USER`, `BACKUP_DATABASE_PASSWORD`, and
+`BACKUP_PASSPHRASE` (a strong passphrase also kept in your password manager).
+This workflow is prepared locally; remote activation and secrets were not verified.
+
+For a local backup, use `backend/.env.seed` or the `DATABASE_*` environment
+variables, then run `./scripts/backup.sh` and
+`./scripts/restore.sh --self-test <dump.gz>`. Backups use restricted permissions,
+TLS, a connection timeout and an atomic final rename. Interrupted dumps are removed.
+The latest production backup and the older stored backup both restored successfully
+on 2026-10-07. Never commit a dump or a passphrase.
+
+To recover an encrypted workflow artifact:
+
+```bash
+gpg --output restored.dump.gz --decrypt civictrack-<timestamp>.dump.gz.gpg
+./scripts/restore.sh --self-test restored.dump.gz
+```
+
+Cloudinary cleanup needs `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and
+`CLOUDINARY_API_SECRET` in the backend deployment. Inspect its dry-run log before
+setting `CLOUDINARY_DRY_RUN=false`. Those management credentials are not configured
+in the available local environment, so production deletion remains unverified.
+
+Verification on 2026-10-07: backend tests, frontend tests, typecheck and lint pass.
+The production frontend builds with `npm run build -- --webpack`; this environment
+rejects the local worker port used by Turbopack. The normal build command is unchanged.

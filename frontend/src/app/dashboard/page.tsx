@@ -18,7 +18,7 @@ import {
   useDepartmentAccountability,
   type StreamState,
 } from "@/lib/queries";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { absoluteDateTime, humaniseMs, reporters } from "@/lib/format";
 import type { ApiError } from "@/lib/api";
 import type { DashboardMetrics, DepartmentAccountability, Median } from "@/lib/types";
@@ -101,7 +101,15 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <Breaching />
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 u-stagger">
+        {metrics.data && <HeadlineAggregates m={metrics.data} />}
+        <DepartmentRecord tilesOnly />
+      </div>
+
+      <p className="mt-8 mb-3 text-dense text-ink-muted">Choose a heading to explore its detailed figures.</p>
+      <DashboardSection title="Currently breaching">
+        <Breaching />
+      </DashboardSection>
 
       {metrics.isPending && <SkeletonTileGrid tiles={2} label="Loading the figures" />}
       {metrics.isError && (
@@ -114,7 +122,9 @@ export default function DashboardPage() {
       {metrics.data && <Aggregates m={metrics.data} />}
 
       {/* Outside the summary's block: its own request, its own failure. */}
-      <DepartmentRecord />
+      <DashboardSection title="Did the fixes hold?">
+        <DepartmentRecord />
+      </DashboardSection>
 
       {metrics.data && (
         <p className="mt-8 text-meta text-ink-muted">
@@ -124,6 +134,21 @@ export default function DashboardPage() {
         </p>
       )}
     </PageShell>
+  );
+}
+
+/** Native disclosure controls support keyboard navigation and one open section at a time. */
+function DashboardSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details name="dashboard-sections" className="group border-b border-rule">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 text-ink hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-4 [&::-webkit-details-marker]:hidden">
+        <h2 className="text-heading">{title}</h2>
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" className="shrink-0 group-open:rotate-180">
+          <path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      </summary>
+      <div className="pb-6">{children}</div>
+    </details>
   );
 }
 
@@ -158,8 +183,7 @@ function Breaching() {
   const [all, setAll] = useState(false);
 
   return (
-    <section className="mt-8">
-      <h2 className="text-heading">Currently breaching</h2>
+    <div>
       {breaching.isPending && <SkeletonTileGrid tiles={1} label="Loading the breaching list" />}
       {breaching.isError && (
         <ErrorState
@@ -206,7 +230,7 @@ function Breaching() {
           {all ? "Show the most overdue only" : `Show all ${breaching.data.length} breaching issues`}
         </button>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -222,13 +246,11 @@ function needs(m: DashboardMetrics, have: number, what: string): string {
 
 const FAILED = "This figure could not be computed just now. It will return on the next refresh.";
 
-function Aggregates({ m }: { m: DashboardMetrics }) {
+function HeadlineAggregates({ m }: { m: DashboardMetrics }) {
   const rt = m.resolutionTime;
   const sla = m.slaCompliance;
-
   return (
     <>
-      <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 u-stagger">
         <MetricTile
           label="Median resolution time"
           {...(!rt
@@ -252,10 +274,17 @@ function Aggregates({ m }: { m: DashboardMetrics }) {
                   trend: `${sla.onTime.toLocaleString("en-IN")} of ${sla.resolved.toLocaleString("en-IN")} fixes claimed before the deadline`,
                 })}
         />
-      </div>
+    </>
+  );
+}
 
-      <section className="mt-8">
-        <h2 className="text-heading">Reported against resolved, last 90 days</h2>
+function Aggregates({ m }: { m: DashboardMetrics }) {
+  const rt = m.resolutionTime;
+  const sla = m.slaCompliance;
+
+  return (
+    <>
+      <DashboardSection title="Reported against resolved, last 90 days">
         <p className="mt-1 text-dense text-ink-muted" style={{ maxWidth: "var(--measure-prose)" }}>
           New issues each day against issues resolved each day. Where the gray line runs above the
           green one, the backlog is growing.
@@ -274,11 +303,9 @@ function Aggregates({ m }: { m: DashboardMetrics }) {
             <p className="text-dense text-ink-muted">{FAILED}</p>
           )}
         </div>
-      </section>
+      </DashboardSection>
 
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <section>
-          <h2 className="text-heading">Open backlog by age</h2>
+      <DashboardSection title="Open backlog by age">
           <div className="mt-3">
             {m.backlogAge ? (
               <ColumnChart
@@ -296,10 +323,11 @@ function Aggregates({ m }: { m: DashboardMetrics }) {
               <p className="text-dense text-ink-muted">{FAILED}</p>
             )}
           </div>
-        </section>
+        </DashboardSection>
 
-        <section>
-          <h2 className="text-heading">Fixes on time, last 30 days</h2>
+      <DashboardSection title="Fixes on time, last 30 days">
+
+
           <div className="mt-3">
             {sla ? (
               <ColumnChart
@@ -324,22 +352,22 @@ function Aggregates({ m }: { m: DashboardMetrics }) {
               <p className="text-dense text-ink-muted">{FAILED}</p>
             )}
           </div>
-        </section>
-      </div>
+      </DashboardSection>
 
-      {rt && (
-        <section className="mt-8">
-          <h2 className="text-heading">Median resolution time</h2>
+      <DashboardSection title="Resolution time by department and ward">
+
+        {rt ? (
           <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-8">
             <MedianTable caption="By department" rows={rt.byDepartment} m={m} />
             <MedianTable caption="By ward" rows={rt.byWard} m={m} />
           </div>
-        </section>
-      )}
+        ) : <p className="text-dense text-ink-muted">{FAILED}</p>}
+      </DashboardSection>
 
-      {m.topClusters && m.topClusters.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-heading">Most-reported open issues</h2>
+      <DashboardSection title="Most-reported open issues">
+        {m.topClusters === null ? <p className="text-dense text-ink-muted">{FAILED}</p> : m.topClusters.length === 0 ? (
+          <p className="text-dense text-ink-muted">No open issues yet.</p>
+        ) : (
           <ol className="mt-3 list-none p-0 border-t border-rule">
             {m.topClusters.map((c) => (
               <li key={c.id} className="border-b border-rule py-3 flex flex-wrap items-center gap-x-5 gap-y-1">
@@ -356,8 +384,8 @@ function Aggregates({ m }: { m: DashboardMetrics }) {
               </li>
             ))}
           </ol>
-        </section>
-      )}
+        )}
+      </DashboardSection>
     </>
   );
 }
@@ -413,10 +441,14 @@ function pct(part: number, whole: number): string {
  * with no denominator yet, and it says so in words -- "0%" would claim a
  * perfect record nobody has earned.
  */
-function DepartmentRecord() {
+function DepartmentRecord({ tilesOnly = false }: { tilesOnly?: boolean }) {
   const departments = useDepartmentAccountability();
 
-  if (departments.isPending) return <SkeletonTileGrid tiles={2} label="Loading the department figures" />;
+  if (departments.isPending) return (
+    <div className={tilesOnly ? "sm:col-span-2" : undefined}>
+      <SkeletonTileGrid tiles={2} label="Loading the department figures" />
+    </div>
+  );
 
   if (departments.isError) {
     return (
@@ -435,11 +467,8 @@ function DepartmentRecord() {
   const claimed = total((d) => d.fixesClaimed);
   const reopened = total((d) => d.reopened);
 
-  return (
-    <section className="mt-8">
-      <h2 className="text-heading">Did the fixes hold?</h2>
-
-      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 u-stagger">
+  if (tilesOnly) return (
+    <>
         <MetricTile
           label="Reopen rate"
           {...(claimed === 0
@@ -451,7 +480,6 @@ function DepartmentRecord() {
         />
         <MetricTile
           label="Resolved without citizen verification"
-          explanation={UNVERIFIED_EXPLANATION}
           {...(resolved === 0
             ? { pending: "Will show the share of issues that closed with nobody confirming the fix, once one has closed." }
             : {
@@ -459,7 +487,12 @@ function DepartmentRecord() {
                 trend: `${unverified.toLocaleString("en-IN")} of ${resolved.toLocaleString("en-IN")} resolved issues`,
               })}
         />
-      </div>
+    </>
+  );
+
+  return (
+    <div>
+      <p className="text-dense text-ink-muted" style={{ maxWidth: "var(--measure-prose)" }}>{UNVERIFIED_EXPLANATION}</p>
 
       <div className="mt-4 overflow-x-auto">
         <table className="w-full text-dense border-collapse">
@@ -500,6 +533,6 @@ function DepartmentRecord() {
           </tbody>
         </table>
       </div>
-    </section>
+    </div>
   );
 }

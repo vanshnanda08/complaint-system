@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
  * look exactly like a concurrency bug.
  */
 @Component
+@org.springframework.context.annotation.Profile("!seed")
 @RequiredArgsConstructor
 @Slf4j
 public class SlaEscalationJob {

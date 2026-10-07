@@ -45,7 +45,7 @@ public class MutableClock extends Clock {
 
     @Override
     public Instant instant() {
-        return instant;
+        return com.civictrack.common.generation.GenerationScope.clock(Clock.fixed(instant, zone)).instant();
     }
 
     public void set(Instant now) {

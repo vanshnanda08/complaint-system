@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
  * mutating rows mid-test produces a flake that reads as a concurrency bug.
  */
 @Component
+@org.springframework.context.annotation.Profile("!seed")
 @RequiredArgsConstructor
 public class CloudinaryOrphanJob {
 

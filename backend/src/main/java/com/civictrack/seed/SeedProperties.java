@@ -9,14 +9,8 @@ public record SeedProperties(
     int corpusSize,
     long randomSeed,
     String labelsFilePath,
+    @DefaultValue("2026-10-01T00:00:00Z") java.time.Instant referenceTime,
 
-        /**
-         * Seed even when the database already holds issues.
-         *
-         * <p>Defaults to false. Seeding twice does not replace the first
-         * corpus, it adds a second one that the clustering engine partially
-         * merges into it -- which inflates report counts and invalidates the
-         * ground-truth labels the evaluation depends on.
-         */
-        @DefaultValue("false") boolean force
+    /** Legacy option: now fails explicitly on a populated database instead of appending. */
+    @DefaultValue("false") boolean force
 ) {}

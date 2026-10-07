@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
  * each wait on the other.
  */
 @Component
+@org.springframework.context.annotation.Profile("!seed")
 @RequiredArgsConstructor
 public class VerificationSweepJob {
 
